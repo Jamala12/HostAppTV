@@ -22,10 +22,25 @@ You need JDK 17 and the Android SDK (platform 37 and build-tools). Put the SDK p
 ./gradlew assembleDebug           # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew testDebugUnitTest       # JVM tests
 ./gradlew connectedDebugAndroidTest   # Room tests on a connected emulator/device
-./gradlew assembleRelease         # minified, unsigned (needs your own signing key)
+./gradlew assembleRelease         # minified; signed when release credentials are configured
 ```
 
 The debug build installs as `uk.ahmedhome.tv.debug`, so it never conflicts with a future signed release (`uk.ahmedhome.tv`).
+
+## Release signing
+
+Keep the release keystore outside the repository. Create a local, Git-ignored `keystore.properties` in the repository root with these four properties (replace every placeholder):
+
+```properties
+storeFile=/absolute/path/to/release.jks
+storePassword=REPLACE_WITH_STORE_PASSWORD
+keyAlias=REPLACE_WITH_KEY_ALIAS
+keyPassword=REPLACE_WITH_KEY_PASSWORD
+```
+
+Each missing property falls back to its environment variable: `AHMEDHOME_STORE_FILE`, `AHMEDHOME_STORE_PASSWORD`, `AHMEDHOME_KEY_ALIAS` and `AHMEDHOME_KEY_PASSWORD`, respectively. Relative keystore paths resolve from the repository root. Restrict the local properties file and keystore to your user (`chmod 600`). Never commit either file or include passwords in build logs.
+
+Run `./gradlew assembleRelease`. With all four values, the signed APK is `app/build/outputs/apk/release/app-release.apk`. With no signing values, the build succeeds unsigned as `app-release-unsigned.apk`; incomplete signing configuration fails with an error. Verify a signed APK with the Android SDK's `apksigner verify --print-certs <apk>`. Keep a recoverable backup of the keystore and both passwords: future updates must use the same signing key.
 
 ## Install on the Fire TV Stick
 

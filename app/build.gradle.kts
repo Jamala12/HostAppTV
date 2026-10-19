@@ -1,7 +1,30 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+}
+
+val keystoreProperties = Properties().apply {
+    providers.fileContents(rootProject.layout.projectDirectory.file("keystore.properties"))
+        .asText.orNull?.let { load(it.reader()) }
+}
+val releaseSigningValues = mapOf(
+    "storeFile" to "AHMEDHOME_STORE_FILE",
+    "storePassword" to "AHMEDHOME_STORE_PASSWORD",
+    "keyAlias" to "AHMEDHOME_KEY_ALIAS",
+    "keyPassword" to "AHMEDHOME_KEY_PASSWORD",
+).mapValues { (property, environmentVariable) ->
+    keystoreProperties.getProperty(property)?.takeIf { it.isNotBlank() }
+        ?: providers.environmentVariable(environmentVariable).orNull?.takeIf { it.isNotBlank() }
+}
+val hasReleaseSigning = releaseSigningValues.values.all { it != null }
+if (!hasReleaseSigning && releaseSigningValues.values.any { it != null }) {
+    throw GradleException(
+        "Incomplete release signing configuration. Supply storeFile, storePassword, keyAlias and " +
+            "keyPassword in keystore.properties or their AHMEDHOME_* environment variables.",
+    )
 }
 
 android {
@@ -20,12 +43,24 @@ android {
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = rootProject.file(releaseSigningValues.getValue("storeFile")!!)
+                storePassword = releaseSigningValues.getValue("storePassword")
+                keyAlias = releaseSigningValues.getValue("keyAlias")
+                keyPassword = releaseSigningValues.getValue("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
         }
         release {
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
