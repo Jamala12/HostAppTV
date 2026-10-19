@@ -1,0 +1,28 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+local.properties
+keystore.properties
+*.jks
+*.keystore
+*.p12
+*.pem
+secrets/
+private/
+
+# Local build products and editor files
+.gradle/
+.kotlin/
+.idea/
+**/build/
+*.iml
+*.apk
+*.aab
+.DS_Store
+
+# Private device evidence and provider data
+captures/
+diagnostics/
+catalogue-cache/
+*.log
