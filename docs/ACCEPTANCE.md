@@ -1,6 +1,6 @@
 # Performance and release acceptance
 
-Proposed gates · 19 October 2026 · **Nothing below has been benchmarked or passed yet.**
+Proposed gates · 19 October 2026 · **No hardware gate below has been run or passed yet.** Emulator and unit-test evidence for the first release is recorded in [STATUS.md](STATUS.md).
 
 ## Measurement conditions
 

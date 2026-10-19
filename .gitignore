@@ -26,3 +26,4 @@ captures/
 diagnostics/
 catalogue-cache/
 *.log
+tools/mock-xtream/media/

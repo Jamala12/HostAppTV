@@ -1,6 +1,6 @@
 # Fire TV application plan
 
-Draft for review · 19 October 2026 · No implementation authorised in this planning task.
+Draft for review · 19 October 2026 · Implementation of the first release was authorised later the same day; see [STATUS.md](STATUS.md) for what was built and tested.
 
 ## Outcome and confirmed device
 

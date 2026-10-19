@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Many Xtream providers only serve HTTP. The platform must permit cleartext so the
+  app can reach them, but the app itself refuses HTTP unless the user explicitly
+  accepts unencrypted transport for the configured provider (see ProviderPolicy).
+  Certificate verification is never disabled; only system CAs are trusted.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
