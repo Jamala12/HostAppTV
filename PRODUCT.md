@@ -2,7 +2,7 @@
 
 <!-- impeccable:product-schema 1 -->
 
-Inferred from README.md and docs/PLAN.md, docs/UX-BRIEF.md and docs/ACCEPTANCE.md. The owner said to proceed without an interview on 19 October 2026, so nothing below was confirmed separately. Treat any item not stated in those documents as an assumption.
+Inferred from README.md and docs/PLAN.md, docs/UX-BRIEF.md and docs/ACCEPTANCE.md. The owner has not been interviewed yet, so nothing below has been confirmed. Treat any item not stated in those documents as an assumption.
 
 ## Platform
 
@@ -38,7 +38,7 @@ A native TV app with the Ahmed Home identity (dark ink surfaces with sage contro
 - Only one player and one provider stream may be open at a time. Automatic retries are limited.
 - Credentials must stay out of Git, logs, navigation state and backups.
 - Out of scope for now: recording, timeshift, downloads, multi-profile, cloud sync, TMDB discovery and Appstore publication.
-- Still to decide: the code licence and the final package name for a signed release.
+- Code licence: MIT. Still to decide: the final package name for a signed release.
 
 ## Brand Commitments
 

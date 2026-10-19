@@ -61,7 +61,7 @@ Nothing in this section has been run.
 
 - The navigation rail is 168 dp wide, not the brief's proposed 112 dp, so text labels fit at 16 sp. This needs checking on the TV.
 - Only the debug APK is installable. No release signing key was created: per PLAN.md it must be generated and backed up privately by the owner.
-- The code licence is still undecided (see README). Source pushed without a licence remains all rights reserved.
+- The code is MIT licensed.
 - HLS live and real 4K/HEVC streams were not tested; the mock provider serves MPEG-TS live and H.264 VOD only.
 - Full XMLTV guides, TMDB discovery and cross-device sync are out of scope, as planned.
 - Returning from the Fire TV Home screen goes to the browse screen rather than the player. The launcher brings the main activity's task to the front, and live TV is deliberately not restarted.

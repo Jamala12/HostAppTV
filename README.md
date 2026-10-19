@@ -64,4 +64,4 @@ Provider access is entered on the TV and stored only on the device, encrypted. N
 
 ## Licence
 
-No code licence has been chosen yet; the plan leaves this to the owner. Until a licence is added, the code is all rights reserved. Bundled font: Gelasio, under the SIL Open Font License 1.1 ([licenses/Gelasio-OFL.txt](licenses/Gelasio-OFL.txt)).
+Code: MIT ([LICENSE](LICENSE)). Bundled font: Gelasio, under the SIL Open Font License 1.1 ([licenses/Gelasio-OFL.txt](licenses/Gelasio-OFL.txt)).
