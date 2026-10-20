@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -27,22 +25,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreInterceptKeyBeforeSoftKeyboard
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -56,7 +44,7 @@ import androidx.tv.material3.Text
 import org.hostapptv.player.ui.components.BrandLockup
 import org.hostapptv.player.ui.components.ButtonTone
 import org.hostapptv.player.ui.components.TvButton
-import org.hostapptv.player.ui.components.rememberImeDetacher
+import org.hostapptv.player.ui.components.TvTextInput
 import org.hostapptv.player.ui.shell.ConnectState
 import org.hostapptv.player.ui.shell.MainViewModel
 import org.hostapptv.player.ui.shell.SetupForm
@@ -97,11 +85,11 @@ fun SetupScreen(vm: MainViewModel) {
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Field("Server address", server, { server = it; vm.clearConnectError() }, "http://provider.example:8080",
-                Modifier.focusRequester(serverFocus), keyboardType = KeyboardType.Uri, selectToEdit = true)
-            Field("Username", username, { username = it; vm.clearConnectError() }, "", keyboardType = KeyboardType.Ascii, selectToEdit = true)
+                Modifier.focusRequester(serverFocus), keyboardType = KeyboardType.Uri)
+            Field("Username", username, { username = it; vm.clearConnectError() }, "", keyboardType = KeyboardType.Ascii)
             Row(verticalAlignment = Alignment.Bottom) {
                 Field("Password", password, { password = it; vm.clearConnectError() }, "", Modifier.weight(1f),
-                    keyboardType = KeyboardType.Password, hidden = !showPassword, imeAction = ImeAction.Done, selectToEdit = true)
+                    keyboardType = KeyboardType.Password, hidden = !showPassword, imeAction = ImeAction.Done)
                 Spacer(Modifier.width(12.dp))
                 TvButton(if (showPassword) "Hide" else "Show", { showPassword = !showPassword })
             }
@@ -125,64 +113,22 @@ fun SetupScreen(vm: MainViewModel) {
     }
 }
 
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun Field(
     label: String, value: String, onChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier,
     keyboardType: KeyboardType = KeyboardType.Text, hidden: Boolean = false, imeAction: ImeAction = ImeAction.Next,
-    selectToEdit: Boolean = false,
 ) {
     var focused by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf(false) }
-    val keyboard = LocalSoftwareKeyboardController.current
     val fm = LocalFocusManager.current
-    val detachIme = rememberImeDetacher()
-    LaunchedEffect(editing) {
-        if (selectToEdit) {
-            if (editing) keyboard?.show() else detachIme()
-        }
-    }
-    // Leaving a field must also detach the TV keyboard, or it keeps swallowing D-pad keys after it hides.
-    fun advance() { fm.moveFocus(FocusDirection.Down); detachIme() }
     Column(modifier) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = if (focused) Ink.text else Ink.muted)
         Spacer(Modifier.height(6.dp))
-        BasicTextField(
-            value = value, onValueChange = onChange, singleLine = true, readOnly = selectToEdit && !editing,
-            textStyle = MaterialTheme.typography.bodyLarge.copy(color = Ink.text),
-            cursorBrush = SolidColor(Ink.sage),
+        TvTextInput(
+            value = value, onValueChange = onChange, onFocusChange = { focused = it },
             visualTransformation = if (hidden) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction, autoCorrectEnabled = false),
-            keyboardActions = KeyboardActions(onNext = { advance() }, onDone = { advance() }),
-            modifier = Modifier.fillMaxWidth().onFocusChanged { if (focused && !it.isFocused) { editing = false; detachIme() }; focused = it.isFocused }
-                // TV keyboards can consume D-pad input even after hiding. Handle navigation
-                // before the IME while the field is highlighted rather than being edited.
-                .onPreInterceptKeyBeforeSoftKeyboard { ev ->
-                    val direction = when (ev.key) {
-                        Key.DirectionUp -> FocusDirection.Up
-                        Key.DirectionDown -> FocusDirection.Down
-                        Key.DirectionLeft -> FocusDirection.Left
-                        Key.DirectionRight -> FocusDirection.Right
-                        else -> null
-                    }
-                    if (selectToEdit && editing && ev.key == Key.Back) {
-                        if (ev.type == KeyEventType.KeyUp) editing = false
-                        true
-                    } else if (selectToEdit && !editing && direction != null) {
-                        if (ev.type == KeyEventType.KeyDown) fm.moveFocus(direction)
-                        true
-                    } else if (selectToEdit && !editing && (ev.key == Key.DirectionCenter || ev.key == Key.Enter || ev.key == Key.NumPadEnter)) {
-                        if (ev.type == KeyEventType.KeyUp) editing = true
-                        true
-                    } else false
-                }
-                .onPreviewKeyEvent { ev ->
-                    if (!selectToEdit && (ev.key == Key.Enter || ev.key == Key.NumPadEnter)) {
-                        if (ev.type == KeyEventType.KeyUp) advance()
-                        true
-                    } else false
-                }
-                .semantics { contentDescription = label },
+            onSubmit = { fm.moveFocus(FocusDirection.Down) },
+            modifier = Modifier.fillMaxWidth().semantics { contentDescription = label },
             decorationBox = { inner ->
                 Box(
                     Modifier.fillMaxWidth().height(Dimens.controlHeight)
