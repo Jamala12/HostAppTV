@@ -2,7 +2,7 @@
 
 A lightweight native IPTV player for Fire TV and Android TV, with a dark ink and sage interface built for the remote.
 
-**Status: public release (0.3.0), with debug and signed release builds.** The household requirements are confirmed in [PRODUCT.md](PRODUCT.md). Emulator checks use a synthetic provider; the app has **not** yet been tested on the Fire TV Stick. [docs/STATUS.md](docs/STATUS.md) lists what was checked and what still needs the device.
+**Status: public release (0.3.1), with debug and signed release builds.** The household requirements are confirmed in [PRODUCT.md](PRODUCT.md). Emulator checks use a synthetic provider; the app has **not** yet been tested on the Fire TV Stick. [docs/STATUS.md](docs/STATUS.md) lists what was checked and what still needs the device.
 
 The primary device is the **Fire TV Stick 4K, 2nd generation** (AFTKM, Fire OS 8.1.8.2, 32-bit app ABI), on a **55-inch Philips Ambilight 4K**. The priorities are avoiding crashes, discovering new and trending media, and smooth playback and remote navigation. One shared setup holds favourites and progress.
 
