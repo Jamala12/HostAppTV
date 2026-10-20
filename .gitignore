@@ -4,8 +4,10 @@
 !.env.example
 local.properties
 keystore.properties
+# Release signing material stays local, including copies in subdirectories.
 *.jks
 *.keystore
+*signing-backup*.json
 *.p12
 *.pem
 secrets/
@@ -23,6 +25,8 @@ private/
 
 # Private device evidence and provider data
 captures/
+.impeccable/review/
 diagnostics/
 catalogue-cache/
 *.log
+tools/mock-xtream/media/
