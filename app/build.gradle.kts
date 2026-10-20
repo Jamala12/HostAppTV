@@ -11,10 +11,10 @@ val keystoreProperties = Properties().apply {
         .asText.orNull?.let { load(it.reader()) }
 }
 val releaseSigningValues = mapOf(
-    "storeFile" to "AHMEDHOME_STORE_FILE",
-    "storePassword" to "AHMEDHOME_STORE_PASSWORD",
-    "keyAlias" to "AHMEDHOME_KEY_ALIAS",
-    "keyPassword" to "AHMEDHOME_KEY_PASSWORD",
+    "storeFile" to "HOSTAPPTV_STORE_FILE",
+    "storePassword" to "HOSTAPPTV_STORE_PASSWORD",
+    "keyAlias" to "HOSTAPPTV_KEY_ALIAS",
+    "keyPassword" to "HOSTAPPTV_KEY_PASSWORD",
 ).mapValues { (property, environmentVariable) ->
     keystoreProperties.getProperty(property)?.takeIf { it.isNotBlank() }
         ?: providers.environmentVariable(environmentVariable).orNull?.takeIf { it.isNotBlank() }
@@ -23,21 +23,21 @@ val hasReleaseSigning = releaseSigningValues.values.all { it != null }
 if (!hasReleaseSigning && releaseSigningValues.values.any { it != null }) {
     throw GradleException(
         "Incomplete release signing configuration. Supply storeFile, storePassword, keyAlias and " +
-            "keyPassword in keystore.properties or their AHMEDHOME_* environment variables.",
+            "keyPassword in keystore.properties or their HOSTAPPTV_* environment variables.",
     )
 }
 
 android {
-    namespace = "uk.ahmedhome.tv"
+    namespace = "org.hostapptv.player"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "uk.ahmedhome.tv"
+        applicationId = "org.hostapptv.player"
         // Fire OS 8 (Fire TV Stick 4K 2nd gen, AFTKM) is Android 11 / API 30.
         minSdk = 30
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Fire TV Stick 4K (2nd gen) runs apps as 32-bit ARM; arm64 covers newer sticks and the emulator.
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }

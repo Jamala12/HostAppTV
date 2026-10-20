@@ -1,8 +1,20 @@
 # First release: implementation status and evidence
 
-Updated 20 October 2026. Version 0.2.0 (release `uk.ahmedhome.tv`, debug `uk.ahmedhome.tv.debug`).
+Updated 20 October 2026. Version 0.3.0 (release `org.hostapptv.player`, debug `org.hostapptv.player.debug`).
 
 This document separates checks that were run from tests that still need the Fire TV Stick. None of the performance or soak gates in [ACCEPTANCE.md](ACCEPTANCE.md) has been run on hardware. Do not read any statement here as a claim about crash stability or performance on the stick.
+
+## Public HostAppTV rebrand (0.3.0)
+
+The public app, repository, launcher banner, application class, package and signing certificate now use HostAppTV. Personal website links and the previous brand have been removed from the current source and documentation. Existing Git history is retained. The new release package is `org.hostapptv.player`; this requires a fresh installation, with no migration from earlier packages. Future releases retain this package and signing key for in-place updates.
+
+The RSA-4096 release key is outside Git. Its backup was saved and read back from the protected secrets service, and the recovered keystore checksum matches the local file. The APK certificate matches the backup. Both local properties and the `HOSTAPPTV_*` environment fallback sign successfully; omitting both still builds unsigned. No private signing material is staged or included in the APK.
+
+Checks repeated for this release: **51 JVM tests**, **9 native emulator tests**, and the complete native discovery/Settings journey at **130% Android text size**. The additional native test loads the renamed Application and TV launcher banner. The signed, minified release also launches into setup at normal and enlarged text size. The full HostAppTV wordmark fits the rail at both sizes. These checks use the same API 31 emulator and synthetic provider as below; physical Fire TV and 4K playback remain unverified.
+
+Fresh Impeccable finish review: **ship** for the narrow rebrand, using all **29 valid native captures**. No material rebrand clipping or focus regressions were found. The documentation handoff compared the final source with the incumbent system and confirmed unchanged palette, type, layout and focus rules, with banner provenance recorded. No new system artifacts were required. This verdict covers the supplied emulator UI, not hardware playback or performance.
+
+The public release contains `HostAppTV.apk`, `SHA256SUMS.txt` and `signing-certificate.sha256.txt`. The README documents the stable latest-APK URL and Downloader installation.
 
 ## Owner-confirmed household update (0.2.0)
 
@@ -19,7 +31,7 @@ Completed new checks: **51 JVM tests**, including bounded authenticated TMDB req
 
 Fresh Impeccable finish review: **ship** for all 26 native emulator captures at normal and 130% text, with no material fixes. The documentation handoff compared the finished extension with the existing theme and shared components and confirmed that the incumbent visual system is preserved; no new design-system artifacts are required. This verdict covers the reviewed UI and recovery states; physical Fire TV behaviour and 4K output remain outside the evidence.
 
-The earlier 0.1.0 evidence below is retained as historical evidence, not a fresh measurement of 0.2.0. Real-provider discovery coverage, live football on the stick, all 32-bit decoding/performance/soak gates and the household television remain unverified.
+The 0.2.0 section and earlier 0.1.0 evidence below are historical; the 0.3.0 checks are recorded above. Real-provider discovery coverage, live football on the stick, all 32-bit decoding/performance/soak gates and the household television remain unverified.
 
 ## What was built
 
@@ -77,7 +89,6 @@ Nothing in this section has been run.
 ## Known limitations and deviations
 
 - The navigation rail is 168 dp wide, not the brief's proposed 112 dp, so text labels fit at 16 sp. This needs checking on the TV.
-- At 130% text, the pre-existing compact navigation brand truncates “Ahmed Home” to “Ahmed”. The documentation handoff recorded this inherited limitation; the shared brand component was preserved.
 - Release signing is now configured and verified; the private key and properties are excluded from Git. Signed release install/update still needs the actual Fire TV Stick.
 - The code is MIT licensed.
 - HLS live and real 4K/HEVC streams were not tested; the mock provider serves MPEG-TS live and H.264 VOD only.

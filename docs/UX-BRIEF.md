@@ -2,7 +2,7 @@
 
 Design intent · 19 October 2026 · Owner-confirmed product context is in [PRODUCT.md](../PRODUCT.md); implementation evidence is in [STATUS.md](STATUS.md).
 
-The owner wants clean Netflix-like browsing using the established Ahmed Home palette, on a 55-inch Philips Ambilight 4K with the existing Fire TV Stick. Home now includes general weekly trends and separate new/trending Korean and Chinese film/series rows, alongside shared Continue Watching and favourites. New releases, provider additions and actual weekly trends remain distinct. Empty or unavailable discovery explains its state; it never blocks library navigation or playback. Default English subtitles follow known foreign-language audio, and every viewer can override them in the player.
+The owner wants clean Netflix-like browsing using the established HostAppTV palette, on a 55-inch Philips Ambilight 4K with the existing Fire TV Stick. Home now includes general weekly trends and separate new/trending Korean and Chinese film/series rows, alongside shared Continue Watching and favourites. New releases, provider additions and actual weekly trends remain distinct. Empty or unavailable discovery explains its state; it never blocks library navigation or playback. Default English subtitles follow known foreign-language audio, and every viewer can override them in the player.
 
 ## Direction contract
 
@@ -14,7 +14,7 @@ The owner wants clean Netflix-like browsing using the established Ahmed Home pal
 
 **FIRST VIEWPORT:** Keep the stable left navigation and compact welcome above the first useful focused row. Poster titles and row headings remain readable during D-pad navigation; Settings groups playback and discovery controls.
 
-**FORM:** Owner-pinned Netflix-like poster rails within the existing Ahmed Home identity. This is a local extension, so no concept seed or replacement visual world applies. Signature interaction: a restrained sage frame moves with remote focus while title facts update without autoplay.
+**FORM:** Public name HostAppTV, approved 20 October 2026; a clean package and signing identity require a fresh install. Owner-pinned Netflix-like poster rails within the existing HostAppTV identity. This is a local extension, so no concept seed or replacement visual world applies. Signature interaction: a restrained sage frame moves with remote focus while title facts update without autoplay.
 
 **FINISH:** unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 
@@ -22,7 +22,7 @@ The owner wants clean Netflix-like browsing using the established Ahmed Home pal
 
 The viewer is seated several metres from a television, often in a dim room, holding a Fire TV remote. The primary task is finding and watching a channel, movie or episode with little effort. Treat browsing, setup and playback controls as Impeccable **Operate** surfaces: clear tasks and familiar TV behaviour lead; the brand supplies palette, typography and restrained detail.
 
-Inherit the identity already present in the website's `src/App.css` and `src/components/Brand.jsx`: Ahmed Home / TV & Cinema wordmark, asymmetric outlined play emblem, dark green/ink surfaces, sage controls, warm text, occasional editorial serif headings, and poster-led content. Preserve that look while replacing mouse/hover behaviour with visible D-pad focus. Phone bottom navigation, tiny desktop filters and hover-only actions do not fit this device.
+Use the HostAppTV wordmark and the established native visual system: asymmetric outlined play emblem, dark green/ink surfaces, sage controls, warm text, occasional editorial serif headings, and poster-led content. Preserve that look while replacing mouse/hover behaviour with visible D-pad focus. Phone bottom navigation, tiny desktop filters and hover-only actions do not fit this device.
 
 | Role | Existing source value | TV intention |
 | --- | --- | --- |
@@ -38,7 +38,7 @@ Inherit the identity already present in the website's `src/App.css` and `src/com
 | Divider | `#26302F` | Quiet structural separation |
 | Live / error | `#8DE0C1` / `#FFB5BD` | Semantic status plus icon/text |
 
-Map these to semantic theme roles rather than scattering raw values through components. Use a bundled, licensed serif only for short display headings if needed to match the site's Georgia-led character; use the platform sans serif for controls, metadata and body. Keep headings readable with Arabic/fallback glyphs. Do not assume Georgia is installed on Fire OS. No runtime font download.
+Map these to semantic theme roles rather than scattering raw values through components. Use a bundled, licensed serif only for short display headings if needed to preserve the established editorial character; use the platform sans serif for controls, metadata and body. Keep headings readable with Arabic/fallback glyphs. Do not assume Georgia is installed on Fire OS. No runtime font download.
 
 ## 4K television layout
 
@@ -59,7 +59,7 @@ Conceptual Home layout, not a pixel-perfect wireframe:
 ```text
 5% safe inset
 ┌──────────────┬─────────────────────────────────────────────────┐
-│ Ahmed Home   │ Home                                Search      │
+│ HostAppTV   │ Home                                Search      │
 │ TV & Cinema  │ Your next watch · selected title facts          │
 │              │                                                 │
 │ Search       │ Continue Watching                               │
@@ -115,4 +115,4 @@ Plan for zero, one, and 100,000 catalogue records in synthetic stress data; this
 
 Provide semantic names, roles and state for VoiceView, including progress and playback controls. Keep reading order aligned with focus order, verify colour contrast, test enlarged text and mixed Arabic/English titles, and preserve standard media directions when text is RTL. Do not rely on colour alone to distinguish the active destination, errors or LIVE state.
 
-Before implementation, compare authenticated website captures with these extracted tokens. Before release, capture actual Fire TV/emulator screens and test the full focus/error matrix on hardware. A browser rendering of this brief would not verify native TV navigation or performance.
+Use the native theme and shared components as the visual reference. Before release, capture actual Fire TV/emulator screens and test the full focus/error matrix on hardware. A browser rendering of this brief would not verify native TV navigation or performance.

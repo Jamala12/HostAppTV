@@ -16,8 +16,8 @@ Kotlin, Compose for TV (tv-material), AndroidX Media3/ExoPlayer, Room with Pagin
 
 One household sharing a single Fire TV Stick 4K (2nd generation, AFTKM, Fire OS 8.1.8.2), connected to a 55-inch Philips Ambilight 4K television. No other television is currently a target.
 
-- The owner, his dad and his brother watch live football.
-- His sister watches Korean dramas, Chinese dramas and other series.
+- Several viewers watch live football.
+- Other viewers watch Korean dramas, Chinese dramas and other series.
 - The family watches movies together; household members also watch movies and series individually.
 - Everyone shares one setup, favourites and viewing progress. Separate profiles are a possible later addition if the family asks for them.
 
@@ -31,9 +31,9 @@ The app must do three things best: avoid crashes, make new and trending media ea
 
 ## Positioning
 
-A native TV app with a clean, Netflix-like browsing experience and the same Ahmed Home colour palette as the owner's other websites and apps. It brings live football, family films and series, and Korean/Chinese discovery into one shared household app.
+A native TV app with a clean, Netflix-like browsing experience and a dark ink and sage colour palette. It brings live football, family films and series, and Korean/Chinese discovery into one shared household app.
 
-The existing implementation connects directly to the user's Xtream provider and does not require the tv.ahmedhome.uk website, its proxy or its login for provider playback. Assumption: preserve that independence when adding discovery.
+The app connects directly to the user's Xtream provider. Provider playback is independent of companion websites and metadata services.
 
 ## Operating Context
 
@@ -54,11 +54,11 @@ The existing implementation connects directly to the user's Xtream provider and 
 - Provider and metadata credentials must stay out of Git, logs, navigation state and Android device backups.
 - Confirmed out of scope for now: separate profiles, recording, downloads and cloud sync. Everyone shares favourites and progress; revisit profiles only if requested.
 - Assumption: timeshift and Appstore publication remain outside this release.
-- Existing code licence: MIT. Release package: `uk.ahmedhome.tv`, as specified by the owner.
+- Existing code licence: MIT. Release package: `org.hostapptv.player`. The owner approved a clean public rebrand on 20 October 2026, including a new package and signing identity; this requires a fresh install.
 
 ## Brand Commitments
 
-- Ahmed Home / TV & Cinema wordmark with the asymmetric outlined play emblem.
+- HostAppTV wordmark with the asymmetric outlined play emblem.
 - The palette tokens in docs/UX-BRIEF.md: canvas #0B1013, sage #CBDCAC, focus #D3E5B1, and the rest of that table.
 - An editorial serif for short headings only. The Georgia-like OFL font Gelasio is bundled.
 - Confirmed direction: clean Netflix-like UI/UX using the existing colour palette. Assumption: interpret this as poster-led browsing, clear content rows, readable selected-title information and predictable remote focus; no autoplay previews or heavy decorative effects.
@@ -66,8 +66,8 @@ The existing implementation connects directly to the user's Xtream provider and 
 ## Evidence on Hand
 
 - docs/UX-BRIEF.md: the colour tokens and screen topology.
-- The web app's Brand component, which supplied the emblem geometry.
-- Authenticated captures of the live website do not exist yet. No real provider catalogue or stream examples are stored in this repository.
+- The native emblem, shared components and theme tokens.
+- No real provider catalogue or stream examples are stored in this repository.
 - The owner interview above establishes the household, television, viewing interests, OWNtv failure scenarios, priorities, language preferences and shared-profile decision. Existing emulator evidence does not establish performance or stability on the household's Fire TV Stick.
 
 ## Product Principles

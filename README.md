@@ -1,10 +1,28 @@
-# Ahmed Home TV for Fire TV
+# HostAppTV for Fire TV
 
-A lightweight native IPTV app for Fire TV, in the dark ink and sage visual identity of [Ahmed Home TV](https://tv.ahmedhome.uk).
+A lightweight native IPTV player for Fire TV and Android TV, with a dark ink and sage interface built for the remote.
 
-**Status: household update (0.2.0), with debug and signed release builds.** The household requirements are confirmed in [PRODUCT.md](PRODUCT.md). Emulator checks use a synthetic provider; the app has **not** yet been tested on the Fire TV Stick. [docs/STATUS.md](docs/STATUS.md) lists what was checked and what still needs the device.
+**Status: public release (0.3.0), with debug and signed release builds.** The household requirements are confirmed in [PRODUCT.md](PRODUCT.md). Emulator checks use a synthetic provider; the app has **not** yet been tested on the Fire TV Stick. [docs/STATUS.md](docs/STATUS.md) lists what was checked and what still needs the device.
 
-The primary device is the **Fire TV Stick 4K, 2nd generation** (AFTKM, Fire OS 8.1.8.2, 32-bit app ABI), on the family's **55-inch Philips Ambilight 4K**. The priorities are avoiding crashes, discovering new and trending media, and smooth playback and remote navigation. One shared setup holds favourites and progress.
+The primary device is the **Fire TV Stick 4K, 2nd generation** (AFTKM, Fire OS 8.1.8.2, 32-bit app ABI), on a **55-inch Philips Ambilight 4K**. The priorities are avoiding crashes, discovering new and trending media, and smooth playback and remote navigation. One shared setup holds favourites and progress.
+
+## Download and install
+
+Download [HostAppTV.apk](https://github.com/Jamala12/HostAppTV/releases/latest/download/HostAppTV.apk) or open the [latest release](https://github.com/Jamala12/HostAppTV/releases/latest). The APK supports Android 11 / Fire OS 8 and newer, on ARM32 and ARM64 devices.
+
+On Fire TV, install **Downloader by AFTVnews**, open it, and enter this direct URL:
+
+```text
+https://github.com/Jamala12/HostAppTV/releases/latest/download/HostAppTV.apk
+```
+
+Allow Downloader under **Settings → My Fire TV → Developer options → Install unknown apps**, then return to Downloader and install the APK. If Developer options is hidden, open **About** and select the device name seven times. ADB debugging is only needed for computer-based installation below.
+
+A numeric Downloader code is optional: create one at [AFTVnews's official shortener](https://go.aftvnews.com/) using the direct URL above. The stable URL follows future releases because each release uses the same APK filename. No account is needed to download the public APK.
+
+This is a fresh installation with package `org.hostapptv.player` and a new release certificate. Previous builds with a different package remain separate; their saved setup and progress do not transfer. Future HostAppTV releases using this package and certificate can update in place.
+
+Each release includes `SHA256SUMS.txt` for checking downloaded files and `signing-certificate.sha256.txt` for identifying the public signing certificate. Neither hash is a password or a setting to enter in the app. On a computer, use `shasum -a 256 HostAppTV.apk` to compare the APK checksum, or `apksigner verify --print-certs HostAppTV.apk` to verify the signer.
 
 ## Documents
 
@@ -25,7 +43,7 @@ You need JDK 17 and the Android SDK (platform 37 and build-tools). Put the SDK p
 ./gradlew assembleRelease         # minified; signed when release credentials are configured
 ```
 
-The debug build installs as `uk.ahmedhome.tv.debug`, so it never conflicts with a future signed release (`uk.ahmedhome.tv`).
+The debug build installs as `org.hostapptv.player.debug`, so it never conflicts with a future signed release (`org.hostapptv.player`).
 
 ## Release signing
 
@@ -38,7 +56,7 @@ keyAlias=REPLACE_WITH_KEY_ALIAS
 keyPassword=REPLACE_WITH_KEY_PASSWORD
 ```
 
-Each missing property falls back to its environment variable: `AHMEDHOME_STORE_FILE`, `AHMEDHOME_STORE_PASSWORD`, `AHMEDHOME_KEY_ALIAS` and `AHMEDHOME_KEY_PASSWORD`, respectively. Relative keystore paths resolve from the repository root. Restrict the local properties file and keystore to your user (`chmod 600`). Never commit either file or include passwords in build logs.
+Each missing property falls back to its environment variable: `HOSTAPPTV_STORE_FILE`, `HOSTAPPTV_STORE_PASSWORD`, `HOSTAPPTV_KEY_ALIAS` and `HOSTAPPTV_KEY_PASSWORD`, respectively. Relative keystore paths resolve from the repository root. Restrict the local properties file and keystore to your user (`chmod 600`). Never commit either file or include passwords in build logs.
 
 Run `./gradlew assembleRelease`. With all four values, the signed APK is `app/build/outputs/apk/release/app-release.apk`. With no signing values, the build succeeds unsigned as `app-release-unsigned.apk`; incomplete signing configuration fails with an error. Verify a signed APK with the Android SDK's `apksigner verify --print-certs <apk>`. Keep a recoverable backup of the keystore and both passwords: future updates must use the same signing key.
 
@@ -54,13 +72,13 @@ Run `./gradlew assembleRelease`. With all four values, the signed APK is `app/bu
    adb install -r app/build/outputs/apk/debug/app-debug.apk
    ```
 
-5. Open **Ahmed Home TV** from **Your Apps & Channels**. Enter your provider's server address, username and password. Choose **Allow unencrypted HTTP** only if your provider has no `https://` address.
+5. Open **HostAppTV** from **Your Apps & Channels**. Enter your provider's server address, username and password. Choose **Allow unencrypted HTTP** only if your provider has no `https://` address.
 
 To update, run `adb install -r` with the new APK. Favourites, progress and settings are kept.
 
 ## Discovery and household playback
 
-Home includes trending films, trending series, and separate new/trending Korean and Chinese rows in the existing ink/sage visual system. In **Settings → Discovery**, enter a TMDB **API Read Access Token** without `Bearer`. The app checks it, encrypts it on the TV with Android Keystore, and never includes it in the APK, Git, logs or device backups. Each installation supplies its own token; playback remains independent of the website and TMDB.
+Home includes trending films, trending series, and separate new/trending Korean and Chinese rows in the existing ink/sage visual system. In **Settings → Discovery**, enter a TMDB **API Read Access Token** without `Bearer`. The app checks it, encrypts it on the TV with Android Keystore, and never includes it in the APK, Git, logs or device backups. Each installation supplies its own token; playback remains independent of companion websites and TMDB.
 
 Only provider-library matches appear: a matching media type and TMDB ID, or an unambiguous exact title and year when the provider has no valid TMDB ID. English titles and original titles are checked; conflicting IDs and ambiguous remakes are rejected. Weekly trends come from TMDB's first five pages per media type. New Korean/Chinese feeds use dated releases from the past year, separately from trends and provider additions. The sampled feeds are bounded; an empty row does not prove that your provider has no other suitable titles. Chinese feeds include Mandarin and Cantonese original-language metadata.
 
@@ -74,11 +92,11 @@ Bulk catalogue sync pauses when playback opens or the app leaves the foreground,
 
 `tools/mock-xtream/server.py` is a synthetic Xtream provider (Python 3 + ffmpeg). It generates live MPEG-TS on demand, serves VOD with two audio tracks and subtitles, and includes channels that inject faults. It logs every stream connection with concurrent and peak counts. See [its README](tools/mock-xtream/README.md).
 
-`HouseholdDeviceTest` additionally requires the mock provider on port **18099** (`python3 tools/mock-xtream/server.py --port 18099`). It uses a separate synthetic account namespace, seeded public metadata and a synthetic token; it restores any previous encrypted discovery token afterward. It checks actual audio/subtitle switching and native Back/arrow/OK journeys. TMDB success/empty/error responses use an isolated local server, with no external discovery requests. Synthetic screenshots are written under the emulator's `Pictures/ahmedhome-tv-review/<pixel-width>/` so they survive Gradle's test cleanup. Copy them into the ignored `.impeccable/review/` directory and remove the generated emulator images after review.
+`HouseholdDeviceTest` additionally requires the mock provider on port **18099** (`python3 tools/mock-xtream/server.py --port 18099`). It uses a separate synthetic account namespace, seeded public metadata and a synthetic token; it restores any previous encrypted discovery token afterward. It checks actual audio/subtitle switching and native Back/arrow/OK journeys. TMDB success/empty/error responses use an isolated local server, with no external discovery requests. Synthetic screenshots are written under the emulator's `Pictures/hostapptv-review/<pixel-width>/` so they survive Gradle's test cleanup. Copy them into the ignored `.impeccable/review/` directory and remove the generated emulator images after review.
 
 ## Layout
 
-`app/src/main/java/uk/ahmedhome/tv/`
+`app/src/main/java/org/hostapptv/player/`
 
 - `data/xtream`: streaming Xtream API client
 - `data/db`: Room catalogue and user state
