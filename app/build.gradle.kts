@@ -36,8 +36,8 @@ android {
         // Fire OS 8 (Fire TV Stick 4K 2nd gen, AFTKM) is Android 11 / API 30.
         minSdk = 30
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Fire TV Stick 4K (2nd gen) runs apps as 32-bit ARM; arm64 covers newer sticks and the emulator.
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
@@ -128,7 +128,10 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.test.runner)
     androidTestImplementation(libs.test.ext.junit)
     androidTestImplementation(libs.coroutines.test)
+    androidTestImplementation(libs.okhttp.mockwebserver)
 }

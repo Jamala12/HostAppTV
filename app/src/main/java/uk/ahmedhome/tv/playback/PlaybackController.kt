@@ -49,6 +49,7 @@ data class PlayerUiState(
     val audioTracks: List<TrackOption> = emptyList(),
     val textTracks: List<TrackOption> = emptyList(),
     val subtitlesOff: Boolean = true,
+    val subtitleNotice: String? = null,
     val videoFormat: String? = null,
     val videoDecoder: String? = null,
     val audioFormat: String? = null,
@@ -83,6 +84,10 @@ class PlaybackController(
     private var reachedReady = false
     private val gate = StreamGate()
     private var openJob: Job? = null
+    private var subtitleMode = "foreign"
+    private var manualSubtitles = false
+
+    fun setSubtitleMode(mode: String) { subtitleMode = mode.takeIf { it in SubtitlePolicy.modes } ?: "foreign" }
 
     private fun ensurePlayer(): ExoPlayer = player ?: run {
         val dataSource = OkHttpDataSource.Factory(http).setUserAgent("AhmedHomeTV/${BuildConfig.VERSION_NAME} (Linux; Android)")
@@ -120,6 +125,7 @@ class PlaybackController(
         reachedReady = false
         currentUrl = url
         currentKind = request.kind
+        manualSubtitles = false
         val p = ensurePlayer()
         p.stop()
         p.clearMediaItems()
@@ -178,6 +184,7 @@ class PlaybackController(
 
     fun selectText(option: TrackOption?) {
         val p = player ?: return
+        manualSubtitles = true
         val builder = p.trackSelectionParameters.buildUpon()
         if (option == null) builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).clearOverridesOfType(C.TRACK_TYPE_TEXT)
         else {
@@ -340,6 +347,20 @@ class PlaybackController(
         }
 
         override fun onTracksChanged(tracks: Tracks) {
+            val p = player ?: return
+            val audioLanguages = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.flatMap { g ->
+                (0 until g.length).filter { g.isTrackSelected(it) }.map { g.getTrackFormat(it).language }
+            }
+            val wantsEnglish = SubtitlePolicy.wantsEnglish(subtitleMode, audioLanguages)
+            val hasEnglish = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.any { g ->
+                (0 until g.length).any { g.isTrackSupported(it) && SubtitlePolicy.isEnglish(g.getTrackFormat(it).language) }
+            }
+            if (!manualSubtitles) {
+                val next = p.trackSelectionParameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .setPreferredTextLanguage("en").setSelectUndeterminedTextLanguage(false)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !wantsEnglish || !hasEnglish).build()
+                if (next != p.trackSelectionParameters) p.trackSelectionParameters = next
+            }
             val audio = mutableListOf<TrackOption>(); val text = mutableListOf<TrackOption>()
             var textSelected = false
             tracks.groups.forEachIndexed { gi, g ->
@@ -353,7 +374,8 @@ class PlaybackController(
                     }
                 }
             }
-            _state.update { it.copy(audioTracks = audio, textTracks = text, subtitlesOff = !textSelected) }
+            _state.update { it.copy(audioTracks = audio, textTracks = text, subtitlesOff = !textSelected,
+                subtitleNotice = if (!manualSubtitles && wantsEnglish && !hasEnglish) "English subtitles aren't provided by this stream." else null) }
         }
     }
 

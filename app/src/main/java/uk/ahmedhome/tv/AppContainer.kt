@@ -14,6 +14,8 @@ import uk.ahmedhome.tv.core.AppLog
 import uk.ahmedhome.tv.data.account.AccountStore
 import uk.ahmedhome.tv.data.account.SettingsStore
 import uk.ahmedhome.tv.data.db.AppDatabase
+import uk.ahmedhome.tv.data.discovery.DiscoveryRepository
+import uk.ahmedhome.tv.data.discovery.TmdbClient
 import uk.ahmedhome.tv.data.repo.LibraryRepository
 import uk.ahmedhome.tv.data.sync.LibrarySync
 import uk.ahmedhome.tv.data.xtream.CleartextRefusedIOException
@@ -25,7 +27,7 @@ import java.util.concurrent.TimeUnit
 data class Session(val config: ProviderConfig, val accountId: String, val client: XtreamClient)
 
 /** Hand-wired dependencies; one instance per process. */
-class AppContainer(context: Context) {
+class AppContainer(context: Context, discoveryClient: (OkHttpClient, String) -> TmdbClient = { http, token -> TmdbClient(http, token) }) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val accountStore = AccountStore(context)
     val settings = SettingsStore(context)
@@ -49,6 +51,7 @@ class AppContainer(context: Context) {
 
     val sync: LibrarySync by lazy { LibrarySync(database.catalog(), appScope) }
     val library: LibraryRepository by lazy { LibraryRepository(database) }
+    val discovery by lazy { DiscoveryRepository(http, appScope, java.io.File(context.cacheDir, "discovery"), accountStore::discoveryToken, { discoveryClient(http, it) }) }
 
     private val _session = MutableStateFlow<Session?>(null)
     val session: StateFlow<Session?> = _session

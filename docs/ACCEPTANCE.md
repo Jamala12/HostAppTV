@@ -6,6 +6,8 @@ Proposed gates · 19 October 2026 · **No hardware gate below has been run or pa
 
 Primary device: Fire TV Stick 4K 2nd generation/AFTKM, 2 GB RAM and Fire OS 8. User-reported starting version: 8.1.8.2. Record OS version, app commit/build, UI surface metrics, TV output mode, network conditions, codec/bitrate and available storage with every result. Use a release/profileable build for timing and memory comparisons; debug builds help diagnosis but do not establish release performance.
 
+Confirmed household display: 55-inch Philips Ambilight 4K. Prioritise the owner's two OWNtv failure scenarios: choosing content during library sync, and live football exiting unexpectedly to Home. They are required regression scenarios for this app, not a diagnosis of OWNtv's cause.
+
 Separate local application timings from provider/network timings. Use repeatable synthetic catalogues and a controlled media source for comparable benchmarks, then repeat the essential playback paths with representative privately configured provider content. A source/network failure is recorded separately, while the app must still remain responsive and recover safely.
 
 ## Initial engineering budgets
@@ -30,6 +32,8 @@ These are project hypotheses, not claims derived from a library choice. Establis
 
 | Scenario | Pass condition |
 | --- | --- |
+| Start watching during refresh | Cached channels/titles remain reachable. Opening playback cancels bulk sync and discovery work; video plays independently. Returning safely restarts the interrupted catalogue without erasing favourites or progress. No crash, ANR or stuck refresh state. |
+| Household discovery and subtitles | Real weekly trend data and separate new Korean/Chinese films/series resolve only to correct provider titles. Cached/offline/invalid-token states stay navigable. Foreign audio selects supplied English subtitles; manual off stays off for that stream, with honest unavailable-track feedback. |
 | Four-hour live soak | No app crash, ANR or OS low-memory kill attributable to the app. UI controls remain responsive; stalls recover or become an actionable finite error. Record dropped frames, reconnects and thermal/memory observations. |
 | Two-hour VOD including 4K | Correct hardware decoder, stable A/V sync, seek and resume work, subtitle/track changes do not leak resources. Use representative supported codecs and both SDR/HDR where available. |
 | 100 channel switches | Sequential and rapid selections, including cancellation during prepare; only latest selection plays, at most one provider stream remains active, memory settles within the growth budget. |

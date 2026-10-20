@@ -13,7 +13,7 @@ import coil3.request.crossfade
 
 class AhmedHomeApp : Application(), SingletonImageLoader.Factory {
     lateinit var container: AppContainer
-        private set
+        internal set
 
     override fun onCreate() {
         super.onCreate()

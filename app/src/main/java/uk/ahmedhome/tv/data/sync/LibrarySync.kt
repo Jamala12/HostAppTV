@@ -3,12 +3,13 @@ package uk.ahmedhome.tv.data.sync
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import uk.ahmedhome.tv.core.AppLog
 import uk.ahmedhome.tv.core.EditionParser
 import uk.ahmedhome.tv.core.TextNormalizer
@@ -27,6 +28,7 @@ data class SyncProgress(
     val current: CatalogKind? = null,
     val itemsInCurrent: Int = 0,
     val error: String? = null,
+    val paused: Boolean = false,
 )
 
 /**
@@ -35,20 +37,37 @@ data class SyncProgress(
  * completes, so an interrupted refresh never erases the working library.
  */
 class LibrarySync(private val dao: CatalogDao, private val scope: CoroutineScope) {
-    private val mutex = Mutex()
-    private var job: Job? = null
+    private data class Refresh(val accountId: String, val client: XtreamClient, val kinds: List<CatalogKind>)
+    private val requested = MutableStateFlow<Refresh?>(null)
+    private val foreground = MutableStateFlow(true)
     private val _progress = MutableStateFlow(SyncProgress())
     val progress: StateFlow<SyncProgress> = _progress
 
-    /** Deduplicates: if a refresh is running for this account, the call joins it. */
-    fun refresh(accountId: String, client: XtreamClient, kinds: List<CatalogKind> = CatalogKind.entries): Job {
-        job?.takeIf { it.isActive }?.let { return it }
-        return scope.launch(Dispatchers.IO) {
-            mutex.withLock { runSync(accountId, client, kinds) }
-        }.also { job = it }
+    init {
+        scope.launch(Dispatchers.IO) {
+            combine(foreground, requested) { visible, request -> request.takeIf { visible } }.collectLatest { request ->
+                if (request == null) {
+                    _progress.value = _progress.value.copy(running = false, paused = requested.value != null)
+                } else {
+                    try { runSync(request.accountId, request.client, request.kinds) }
+                    finally { _progress.value = _progress.value.copy(running = false, paused = !foreground.value && requested.value != null) }
+                    requested.compareAndSet(request, null)
+                }
+            }
+        }
     }
 
-    fun cancel() { job?.cancel(); job = null; _progress.value = SyncProgress() }
+    /** Same-account duplicate requests coalesce; resuming restarts an interrupted catalogue safely. */
+    fun refresh(accountId: String, client: XtreamClient, kinds: List<CatalogKind> = CatalogKind.entries) {
+        val current = requested.value
+        if (current?.accountId == accountId && current.kinds == kinds) return
+        requested.value = Refresh(accountId, client, kinds)
+    }
+
+    /** Bulk imports run only on the browsing screen, never alongside video decoding or in Fire TV Home. */
+    fun setForeground(visible: Boolean) { foreground.value = visible }
+
+    fun cancel() { requested.value = null; _progress.value = SyncProgress() }
 
     private suspend fun runSync(accountId: String, client: XtreamClient, kinds: List<CatalogKind>) {
         _progress.value = SyncProgress(running = true)
@@ -56,43 +75,48 @@ class LibrarySync(private val dao: CatalogDao, private val scope: CoroutineScope
         for (kind in kinds) {
             val gen = System.currentTimeMillis()
             _progress.value = SyncProgress(running = true, current = kind)
-            dao.upsertSyncState(SyncStateEntity(accountId, kind.key, previousComplete(accountId, kind), gen, 0, "running", null))
+            var previous: SyncStateEntity? = null
             try {
+                previous = dao.syncStatesNow(accountId).firstOrNull { it.kind == kind.key }
+                // Preserve the prior count before writing the running state: it protects against destructive empty refreshes.
+                dao.upsertSyncState(SyncStateEntity(accountId, kind.key, previous?.lastCompleteAt, gen, previous?.count ?: 0, "running", null))
                 val cats = client.categories(kind)
                 dao.upsertCategories(cats.map { CategoryEntity(accountId, kind.key, it.id, it.name, it.order, gen) })
-                val previousCount = dao.syncStatesNow(accountId).firstOrNull { it.kind == kind.key && it.lastCompleteAt != null }?.count ?: 0
-                guardPrevious = previousCount
+                val previousCount = previous?.count ?: 0
                 val count = when (kind) {
-                    CatalogKind.LIVE -> syncLive(accountId, client, gen)
-                    CatalogKind.MOVIE -> syncMovies(accountId, client, gen)
-                    CatalogKind.SERIES -> syncSeries(accountId, client, gen)
+                    CatalogKind.LIVE -> syncLive(accountId, client, gen, previousCount)
+                    CatalogKind.MOVIE -> syncMovies(accountId, client, gen, previousCount)
+                    CatalogKind.SERIES -> syncSeries(accountId, client, gen, previousCount)
                 }
                 dao.pruneCategories(accountId, kind.key, gen)
                 dao.upsertSyncState(SyncStateEntity(accountId, kind.key, System.currentTimeMillis(), gen, count, "complete", null))
                 AppLog.i("sync ${kind.key}: $count items")
             } catch (e: CancellationException) {
-                dao.upsertSyncState(SyncStateEntity(accountId, kind.key, previousComplete(accountId, kind), gen, 0, "interrupted", null))
-                _progress.value = SyncProgress()
+                recordFailure(accountId, kind, gen, previous, "interrupted", null)
                 throw e
-            } catch (e: XtreamException) {
+            } catch (e: Exception) {
                 AppLog.w("sync ${kind.key} failed", e)
-                firstError = firstError ?: e.message
-                dao.upsertSyncState(SyncStateEntity(accountId, kind.key, previousComplete(accountId, kind), gen, 0, "failed", e.message))
+                val message = if (e is XtreamException) e.message else "Couldn't save the library. Check available storage and try refreshing again."
+                firstError = firstError ?: message
+                recordFailure(accountId, kind, gen, previous, "failed", message)
                 if (e is XtreamException.Unauthorized || e is XtreamException.CleartextRefused) break
             }
         }
         _progress.value = SyncProgress(running = false, error = firstError)
     }
 
-    private suspend fun previousComplete(accountId: String, kind: CatalogKind): Long? =
-        dao.syncStatesNow(accountId).firstOrNull { it.kind == kind.key }?.lastCompleteAt
+    private suspend fun recordFailure(a: String, kind: CatalogKind, gen: Long, previous: SyncStateEntity?, status: String, message: String?) {
+        withContext(NonCancellable) {
+            // Storage failure can also prevent bookkeeping; it must never escape the worker and crash playback.
+            runCatching { dao.upsertSyncState(SyncStateEntity(a, kind.key, previous?.lastCompleteAt, gen, previous?.count ?: 0, status, message)) }
+        }
+    }
 
     private fun bump(n: Int) { _progress.value = _progress.value.copy(itemsInCurrent = _progress.value.itemsInCurrent + n) }
 
-    private var guardPrevious = 0
-    private fun guard(n: Int) { if (n == 0 && guardPrevious > 0) throw XtreamException.SuspiciousEmpty() }
+    private fun guard(n: Int, previous: Int) { if (n == 0 && previous > 0) throw XtreamException.SuspiciousEmpty() }
 
-    private suspend fun syncLive(a: String, client: XtreamClient, gen: Long): Int {
+    private suspend fun syncLive(a: String, client: XtreamClient, gen: Long, previous: Int): Int {
         var position = 0
         val n = client.liveStreams { batch ->
             dao.upsertChannels(batch.map {
@@ -101,12 +125,12 @@ class LibrarySync(private val dao: CatalogDao, private val scope: CoroutineScope
             })
             bump(batch.size)
         }
-        guard(n)
+        guard(n, previous)
         dao.pruneChannels(a, gen)
         return n
     }
 
-    private suspend fun syncMovies(a: String, client: XtreamClient, gen: Long): Int {
+    private suspend fun syncMovies(a: String, client: XtreamClient, gen: Long, previous: Int): Int {
         val n = client.movies { batch ->
             dao.insertMovieBatch(a, batch.map {
                 val e = EditionParser.parse(it.name, it.year)
@@ -116,12 +140,12 @@ class LibrarySync(private val dao: CatalogDao, private val scope: CoroutineScope
             })
             bump(batch.size)
         }
-        guard(n)
+        guard(n, previous)
         dao.finishMovies(a, gen)
         return n
     }
 
-    private suspend fun syncSeries(a: String, client: XtreamClient, gen: Long): Int {
+    private suspend fun syncSeries(a: String, client: XtreamClient, gen: Long, previous: Int): Int {
         val n = client.series { batch ->
             dao.insertSeriesBatch(a, batch.map {
                 val e = EditionParser.parse(it.name, it.year)
@@ -131,7 +155,7 @@ class LibrarySync(private val dao: CatalogDao, private val scope: CoroutineScope
             })
             bump(batch.size)
         }
-        guard(n)
+        guard(n, previous)
         dao.finishSeries(a, gen)
         return n
     }

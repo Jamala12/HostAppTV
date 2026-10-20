@@ -2,6 +2,8 @@
 
 Draft for review · 19 October 2026 · Implementation of the first release was authorised later the same day; see [STATUS.md](STATUS.md) for what was built and tested.
 
+Owner interview update: [PRODUCT.md](../PRODUCT.md) is now confirmed and takes precedence over this original sequencing. General trending discovery and new/trending Korean and Chinese films and shows are core release requirements. One shared household uses a 55-inch Philips Ambilight 4K; the priorities are avoiding crashes, useful discovery and smooth playback/navigation. Release signing is configured privately. Version 0.2.0 adds direct, optional TMDB token configuration, English subtitles for foreign audio, and playback-prioritised library refresh.
+
 ## Outcome and confirmed device
 
 Build a personal TV player that is quick to browse and dependable during long viewing sessions. The immediate replacement use case is an existing player reported to crash and slow down the stick. Its cause has not been diagnosed; this plan controls the new app's resource use and verifies behaviour on hardware rather than assuming a particular cause.
@@ -26,7 +28,7 @@ Success means starting familiar content with few remote presses, recovering clea
 
 First release excludes recording, timeshift, downloads, multi-screen playback, background audio, auto-playing trailers, cloud sync, multi-profile management, mandatory companion servers and Appstore publication. These add resource or delivery complexity without proving the primary playback task.
 
-TMDB discovery and the website's Trending/What's popular feeds are a later parity phase. The first release can use provider metadata and artwork. Never label provider ratings as trending, invent programme data, or present a title as playable unless it exists in the provider catalogue.
+The original plan deferred TMDB discovery. The owner interview superseded that decision: general weekly trends and dedicated new/trending Korean and Chinese rows now belong in this release. Provider metadata and artwork remain the playback baseline. Never label provider ratings as trending, invent programme data, or present a title as playable unless it exists in the provider catalogue.
 
 ## Proposed technical direction
 

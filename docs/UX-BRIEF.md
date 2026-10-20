@@ -1,6 +1,22 @@
 # TV UI/UX brief
 
-Draft design intent · 19 October 2026 · No interface has been implemented or rendered.
+Design intent · 19 October 2026 · Owner-confirmed product context is in [PRODUCT.md](../PRODUCT.md); implementation evidence is in [STATUS.md](STATUS.md).
+
+The owner wants clean Netflix-like browsing using the established Ahmed Home palette, on a 55-inch Philips Ambilight 4K with the existing Fire TV Stick. Home now includes general weekly trends and separate new/trending Korean and Chinese film/series rows, alongside shared Continue Watching and favourites. New releases, provider additions and actual weekly trends remain distinct. Empty or unavailable discovery explains its state; it never blocks library navigation or playback. Default English subtitles follow known foreign-language audio, and every viewer can override them in the player.
+
+## Direction contract
+
+**THESIS:** A shared family television library where finding the next watch and starting playback take little remote effort. Content leads; discovery adds useful rows to the existing Home.
+
+**OWN-WORLD:** Preserve the established ink canvas, sage controls, warm text, Gelasio headings, asymmetric play emblem and crisp focus frame. Use the existing native TV components and spacing.
+
+**STORY:** Resume a shared title, choose live football, or browse general, Korean and Chinese discovery. Every displayed discovery title opens a playable provider match. Setup, offline and empty states explain the next action.
+
+**FIRST VIEWPORT:** Keep the stable left navigation and compact welcome above the first useful focused row. Poster titles and row headings remain readable during D-pad navigation; Settings groups playback and discovery controls.
+
+**FORM:** Owner-pinned Netflix-like poster rails within the existing Ahmed Home identity. This is a local extension, so no concept seed or replacement visual world applies. Signature interaction: a restrained sage frame moves with remote focus while title facts update without autoplay.
+
+**FINISH:** unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 
 ## Job, scene and visual authority
 

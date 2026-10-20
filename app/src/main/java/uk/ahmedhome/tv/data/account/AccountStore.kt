@@ -42,6 +42,17 @@ class AccountStore(context: Context) {
         prefs.edit().remove(KEY_BLOB).apply()
     }
 
+    fun discoveryToken(): String? = prefs.getString("discovery_blob", null)?.let { blob ->
+        runCatching { String(decrypt(blob), Charsets.UTF_8) }.getOrNull()
+    }
+
+    fun saveDiscoveryToken(token: String) {
+        require(Regex("[A-Za-z0-9_.-]{20,4096}").matches(token)) { "Enter the TMDB API Read Access Token, without Bearer." }
+        prefs.edit().putString("discovery_blob", encrypt(token.toByteArray(Charsets.UTF_8))).apply()
+    }
+
+    fun clearDiscoveryToken() { prefs.edit().remove("discovery_blob").apply() }
+
     private fun key(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (ks.getKey(ALIAS, null) as? SecretKey)?.let { return it }

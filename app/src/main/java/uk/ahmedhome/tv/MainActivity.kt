@@ -15,4 +15,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent { AhmedHomeTheme { AppRoot(vm) } }
     }
+
+    override fun onStart() {
+        super.onStart()
+        container.sync.setForeground(true)
+        container.discovery.refresh()
+    }
+
+    override fun onStop() {
+        container.sync.setForeground(false)
+        container.discovery.cancel()
+        super.onStop()
+    }
 }

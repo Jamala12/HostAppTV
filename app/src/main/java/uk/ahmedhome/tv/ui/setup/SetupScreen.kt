@@ -123,7 +123,7 @@ fun SetupScreen(vm: MainViewModel) {
 }
 
 @Composable
-private fun Field(
+internal fun Field(
     label: String, value: String, onChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier,
     keyboardType: KeyboardType = KeyboardType.Text, hidden: Boolean = false, imeAction: ImeAction = ImeAction.Next,
 ) {

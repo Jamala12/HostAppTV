@@ -255,6 +255,9 @@ fun PlayerScreen(
                     Spacer(Modifier.weight(1f))
                     state.videoFormat?.let { Text(it, style = MaterialTheme.typography.labelSmall.copy(letterSpacing = MaterialTheme.typography.bodySmall.letterSpacing), color = Ink.muted, maxLines = 1) }
                 }
+                state.subtitleNotice?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = Ink.muted, modifier = Modifier.padding(top = 8.dp))
+                }
             }
         }
 

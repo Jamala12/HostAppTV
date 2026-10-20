@@ -63,6 +63,8 @@ interface CatalogDao {
     suspend fun movieEditions(a: String, groupKey: String): List<MovieEntity>
     @Query("SELECT * FROM movies WHERE accountId = :a AND streamId = :id")
     suspend fun movie(a: String, id: Long): MovieEntity?
+    @Query("SELECT * FROM movies WHERE accountId = :a AND isPrimary = 1 AND (groupKey IN (:keys) OR title COLLATE NOCASE IN (:titles)) LIMIT 600")
+    fun discoveryMovies(a: String, keys: List<String>, titles: List<String>): Flow<List<MovieEntity>>
 
     // --- Series ---
     @Upsert suspend fun upsertSeries(items: List<SeriesEntity>)
@@ -86,6 +88,8 @@ interface CatalogDao {
     suspend fun seriesEditions(a: String, groupKey: String): List<SeriesEntity>
     @Query("SELECT * FROM series WHERE accountId = :a AND seriesId = :id")
     suspend fun seriesById(a: String, id: Long): SeriesEntity?
+    @Query("SELECT * FROM series WHERE accountId = :a AND isPrimary = 1 AND (groupKey IN (:keys) OR title COLLATE NOCASE IN (:titles)) LIMIT 600")
+    fun discoverySeries(a: String, keys: List<String>, titles: List<String>): Flow<List<SeriesEntity>>
 
     // --- Search (normalised keys; pattern built by SearchQuery) ---
     @Query("""SELECT * FROM channels WHERE accountId = :a AND searchKey LIKE :pattern ESCAPE '\'

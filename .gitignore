@@ -25,6 +25,7 @@ private/
 
 # Private device evidence and provider data
 captures/
+.impeccable/review/
 diagnostics/
 catalogue-cache/
 *.log

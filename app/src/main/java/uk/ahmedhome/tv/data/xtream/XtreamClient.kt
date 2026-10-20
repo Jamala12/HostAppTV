@@ -4,7 +4,10 @@ import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.JsonEncodingException
 import com.squareup.moshi.JsonReader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.Call
@@ -248,8 +251,12 @@ class XtreamClient(private val http: OkHttpClient, val config: ProviderConfig) {
 
     private suspend fun <T> streamArray(
         url: HttpUrl, batchSize: Int, onBatch: suspend (List<T>) -> Unit, map: (Map<String, String?>) -> T?,
-    ): Int {
-        val response = execute(url)
+    ): Int = withContext(Dispatchers.IO) {
+        var activeCall: Call? = null
+        val response = execute(url) { activeCall = it }
+        val cancellation = launch(start = CoroutineStart.UNDISPATCHED) {
+            try { awaitCancellation() } finally { activeCall?.cancel() }
+        }
         var count = 0
         try {
             response.use { resp ->
@@ -257,7 +264,7 @@ class XtreamClient(private val http: OkHttpClient, val config: ProviderConfig) {
                 when (r.peek()) {
                     JsonReader.Token.BEGIN_ARRAY -> Unit
                     // Some panels answer {} for an empty catalogue; anything else is not a catalogue.
-                    JsonReader.Token.BEGIN_OBJECT -> { r.skipValue(); return 0 }
+                    JsonReader.Token.BEGIN_OBJECT -> { r.skipValue(); return@withContext 0 }
                     else -> throw XtreamException.Malformed(null)
                 }
                 r.beginArray()
@@ -275,8 +282,9 @@ class XtreamClient(private val http: OkHttpClient, val config: ProviderConfig) {
         catch (e: JsonEncodingException) { throw XtreamException.Malformed(e) }
         catch (e: XtreamException) { throw e }
         catch (e: java.io.EOFException) { throw XtreamException.Malformed(e) }
-        catch (e: IOException) { if (e.isCleartextRefusal()) throw XtreamException.CleartextRefused(); throw XtreamException.Network(e) }
-        return count
+        catch (e: IOException) { coroutineContext.ensureActive(); if (e.isCleartextRefusal()) throw XtreamException.CleartextRefused(); throw XtreamException.Network(e) }
+        finally { cancellation.cancel() }
+        count
     }
 
     private suspend fun <T> request(url: HttpUrl, parse: (JsonReader) -> T): T {
@@ -293,9 +301,10 @@ class XtreamClient(private val http: OkHttpClient, val config: ProviderConfig) {
         }
     }
 
-    private suspend fun execute(url: HttpUrl): Response {
+    private suspend fun execute(url: HttpUrl, onCall: (Call) -> Unit = {}): Response {
         if (url.scheme == "http" && !config.allowCleartext) throw XtreamException.CleartextRefused()
         val call = http.newCall(Request.Builder().url(url).header("Accept", "application/json").build())
+        onCall(call)
         val response = try { call.await() } catch (e: IOException) {
             if (e.isCleartextRefusal()) throw XtreamException.CleartextRefused()
             throw XtreamException.Network(e)

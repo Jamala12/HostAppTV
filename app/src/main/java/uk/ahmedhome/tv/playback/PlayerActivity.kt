@@ -32,6 +32,7 @@ class PlayerActivity : ComponentActivity() {
     /** True after the activity was stopped once; the next start must not auto-play. */
     private var resumedFromBackground = false
     private var channelIds: List<Long>? = null
+    private var startJob: kotlinx.coroutines.Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,6 +64,8 @@ class PlayerActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         if (!::session.isInitialized) return
+        container.sync.setForeground(false)
+        container.discovery.cancel()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val c = PlaybackController(this, container.http, lifecycleScope, null, ::persistProgress)
         controller = c
@@ -77,6 +80,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        startJob?.cancel(); stepJob?.cancel()
         controller?.release()
         controller = null
         controllerFlow.value = null
@@ -94,14 +98,19 @@ class PlayerActivity : ComponentActivity() {
     private fun startPlayback(autoPlay: Boolean) {
         val c = controller ?: return
         val req = request.value ?: return
-        lifecycleScope.launch {
+        startJob?.cancel()
+        startJob = lifecycleScope.launch {
             val start = if (req.kind == ContentKind.LIVE) 0L else resumePosition(req)
-            val format = container.settings.current().liveFormat
+            val settings = container.settings.current()
+            val format = settings.liveFormat
             val url = when (req.kind) {
                 ContentKind.LIVE -> session.client.liveUrl(req.contentId, format)
                 ContentKind.MOVIE -> session.client.movieUrl(req.contentId, req.ext)
                 ContentKind.EPISODE -> session.client.episodeUrl(req.contentId, req.ext)
             }
+            // A newer channel or a stopped activity must not resurrect an older preparation.
+            if (controller !== c || request.value?.contentId != req.contentId) return@launch
+            c.setSubtitleMode(settings.subtitleMode)
             c.open(req, url, start, autoPlay)
             resumedFromBackground = false
         }
