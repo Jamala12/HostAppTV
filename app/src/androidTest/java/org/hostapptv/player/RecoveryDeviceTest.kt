@@ -116,7 +116,8 @@ class RecoveryDeviceTest {
         try {
             activity = inst.startActivitySync(PlaybackRequest(ContentKind.LIVE, 1, "ts", "Synthetic silent channel")
                 .toIntent(context).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            compose.waitUntil(5_000) { compose.onAllNodes(hasText("Leave") and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(5_000) { compose.onAllNodes(hasText("Back to leave")).fetchSemanticsNodes().isNotEmpty() }
+            assertTrue(compose.onAllNodes(hasText("Leave") and hasClickAction()).fetchSemanticsNodes().isEmpty())
             val field = PlayerActivity::class.java.getDeclaredField("controller").apply { isAccessible = true }
             lateinit var controller: PlaybackController
             inst.runOnMainSync { controller = field.get(activity) as PlaybackController }

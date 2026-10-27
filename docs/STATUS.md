@@ -1,8 +1,18 @@
 # Implementation status and evidence
 
-Updated 27 October 2026. Source version 0.3.3 (release `org.hostapptv.player`, debug `org.hostapptv.player.debug`).
+Updated 27 October 2026. Source version 0.3.4 (release `org.hostapptv.player`, debug `org.hostapptv.player.debug`).
 
 This document separates checks that were run from tests that still need the Fire TV Stick. None of the performance or soak gates in [ACCEPTANCE.md](ACCEPTANCE.md) has been run on hardware. Do not read any statement here as a claim about crash stability or performance on the stick.
+
+## Movie/episode seeking and remote controls (0.3.4)
+
+The 15-second recovery deadline is now live-TV only. Movies and episodes restore the original prepare/retry/stall watchdogs (15/10/20 seconds), three retries with 1/3/6-second backoff, a 30-second retry window starting at the first failure, and a one-minute healthy-playback reset. A normal seek does not start the live deadline.
+
+The loading/buffering overlay no longer takes focus or contains a Leave button; it retains “Back to leave”. Hidden controls commit OK on key-up, so the release cannot activate a newly focused control. Buffering transitions do not request play/pause focus. Skip buttons read the player's current position and retain focus across jumps, allowing repeated 10-second skips. Up collapses the playback bar while preserving playback or pause; audio/subtitle panels retain their existing navigation.
+
+Each player's HTTP calls remain tracked until their bodies close. Stopping, retrying, switching or leaving explicitly cancels those calls, including a socket waiting for a delayed byte-range body. This closes the old connection before the next preparation without cancelling catalogue or artwork requests.
+
+Verification: **59 JVM tests** and the full **22 native emulator tests** pass. New remote tests cover movie and episode seeks that buffer for 18 seconds and then resume without retrying or leaving, skip focus retained after buffering, repeated 10-second jumps, Up hiding the bar while playing and paused, and Back exiting and closing a pending seek download within three seconds. Existing live recovery, temporary provider errors, database migration, discovery/Settings navigation, subtitle switching and text-input checks also pass. These use synthetic streams on the Android TV API 31 emulator; the owner's Fire TV remote and real-provider seek behaviour still need a hardware check.
 
 ## Library refresh and live recovery (0.3.3)
 
@@ -60,7 +70,7 @@ The 0.2.0 section and earlier 0.1.0 evidence below are historical; the 0.3.0 che
 | Details | Movies have editions, Resume / Start over and My List. Series have seasons, episodes with progress, a Resume or Next button and editions. |
 | Search | Local search across all catalogues with accent and Arabic normalisation. Matches are ranked exact, then prefix, then word prefix, then contains. Results show per-scope counts, a coverage warning while a sync is incomplete, and recent searches. |
 | My List | Saved channels, movies and series for the current account. Items the provider has removed are labelled, and pressing OK removes them. |
-| Player | Media3 with a SurfaceView. One player per playback screen, with connection accounting and closing checks on channel changes and retries. Channel up/down is debounced. Left/Right shows a seek preview that OK commits. Audio, subtitles and next-episode controls are available. Automatic recovery has one 15-second deadline, with Leave and Back available throughout. 401/403/404/410 responses fail immediately. 4K video that would need a software decoder is refused. Progress is saved every 15 s and on pause or exit. The player is released in `onStop`, and returning never restarts live TV silently. |
+| Player | Media3 with a SurfaceView. One player per playback screen, with connection accounting and closing checks on channel changes and retries. Channel up/down is debounced. Left/Right shows a seek preview that OK commits. Skip controls retain focus and Up hides the bar. Audio, subtitles and next-episode controls are available. Live recovery has one 15-second deadline; movies/episodes retain their original retry timings. Back leaves throughout recovery without a focusable Leave button. 401/403/404/410 responses fail immediately. 4K video that would need a software decoder is refused. Progress is saved every 15 s and on pause or exit. The player is released in `onStop`, and returning never restarts live TV silently. |
 | Settings | Library status and refresh, live format (MPEG-TS or HLS), preferred edition language, account status, sign-out confirmation, clearing the artwork cache, and a list of this device's hardware decoders (useful for checking HEVC and 4K on the stick). |
 | Security | Credentials are removed from logs. Backup and device transfer are disabled. Stream URLs are built at play time and never stored. The app enforces the HTTP opt-in, and certificate checks are never disabled. |
 
