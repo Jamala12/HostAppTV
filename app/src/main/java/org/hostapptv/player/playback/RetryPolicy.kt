@@ -8,38 +8,45 @@ sealed interface RetryDecision {
 }
 
 /**
- * At most [maxRetries] automatic retries with backoff, all within a [windowMs] recovery window that starts
- * at the first failure. Auth / unavailable / unsupported failures need user action and are never retried.
+ * Automatic retries share one wall-clock recovery window, including time spent connecting/buffering.
+ * Auth / unavailable / unsupported failures need user action and are never retried.
  * Sustained healthy playback ([healthyResetMs]) resets the budget.
  */
 class RetryPolicy(
-    private val maxRetries: Int = 3,
-    private val windowMs: Long = 30_000,
-    private val backoffMs: List<Long> = listOf(1_000, 3_000, 6_000),
-    private val healthyResetMs: Long = 60_000,
-    private val clock: () -> Long = System::currentTimeMillis,
+    private val maxRetries: Int = Int.MAX_VALUE,
+    private val windowMs: Long = 15_000,
+    private val backoffMs: List<Long> = listOf(500, 1_000, 2_000),
+    private val healthyResetMs: Long = 3_000,
+    private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
     private var attempts = 0
     private var windowStart = -1L
     private var healthySince = -1L
 
+    val isRecovering: Boolean get() = windowStart >= 0
+    val remainingMs: Long get() = if (isRecovering) (windowMs - (clock() - windowStart)).coerceAtLeast(0) else windowMs
+
+    fun beginRecovery() {
+        if (!isRecovering) windowStart = clock()
+        healthySince = -1L
+    }
+
     fun onFailure(failure: FailureClass): RetryDecision {
         if (failure != FailureClass.TRANSIENT && failure != FailureClass.BEHIND_LIVE_WINDOW) return RetryDecision.GiveUp(failure)
-        val now = clock()
-        healthySince = -1L
-        if (windowStart < 0) windowStart = now
-        if (attempts >= maxRetries) return RetryDecision.GiveUp(FailureClass.TRANSIENT)
+        beginRecovery()
+        if (attempts >= maxRetries || remainingMs == 0L) return RetryDecision.GiveUp(FailureClass.TRANSIENT)
         val delay = if (failure == FailureClass.BEHIND_LIVE_WINDOW) 0L else backoffMs[attempts.coerceAtMost(backoffMs.lastIndex)]
-        if (now + delay - windowStart > windowMs) return RetryDecision.GiveUp(FailureClass.TRANSIENT)
         attempts++
-        return RetryDecision.Retry(delay, attempts)
+        return RetryDecision.Retry(delay.coerceAtMost(remainingMs), attempts)
     }
 
     /** Call while frames are playing; resets the budget after a sustained healthy period. */
-    fun onHealthy() {
+    fun onHealthy(): Boolean {
+        if (!isRecovering) return false
         val now = clock()
         if (healthySince < 0) healthySince = now
-        if (attempts > 0 && now - healthySince >= healthyResetMs) reset()
+        if (now - healthySince >= healthyResetMs) { reset(); return true }
+        return false
     }
 
     fun reset() { attempts = 0; windowStart = -1L; healthySince = -1L }

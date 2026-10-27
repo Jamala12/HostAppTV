@@ -17,8 +17,11 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.hostapptv.player.data.db.CatalogDao
 import org.hostapptv.player.data.db.ChannelEntity
+import org.hostapptv.player.data.db.MovieEntity
+import org.hostapptv.player.data.db.SeriesEntity
 import org.hostapptv.player.data.db.SyncStateEntity
 import org.hostapptv.player.data.sync.LibrarySync
+import org.hostapptv.player.data.sync.cataloguesNeedingRefresh
 import org.hostapptv.player.data.xtream.CatalogKind
 import org.hostapptv.player.data.xtream.ProviderConfig
 import org.hostapptv.player.data.xtream.XtreamClient
@@ -28,9 +31,22 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 
 class LibrarySyncSafetyTest {
+    @Test fun failedAndInterruptedCataloguesRetryWithoutRedownloadingFreshSuccessfulOnes() {
+        val now = 50_000_000L
+        fun state(kind: String, status: String, at: Long = now) = SyncStateEntity("a", kind, at, now, 0, status, null)
+        assertEquals(listOf(CatalogKind.MOVIE, CatalogKind.SERIES), cataloguesNeedingRefresh(listOf(
+            state("live", "complete"), state("movie", "failed"), state("series", "interrupted"),
+        ), now))
+        assertTrue(cataloguesNeedingRefresh(listOf("live", "movie", "series").map { state(it, "complete") }, now).isEmpty())
+        assertEquals(CatalogKind.entries, cataloguesNeedingRefresh(emptyList(), now))
+        assertEquals(CatalogKind.entries, cataloguesNeedingRefresh(listOf("live", "movie", "series").map { state(it, "complete", 1) }, now))
+    }
+
     private class DatabaseFake(var failWrites: Boolean = false) {
         val states = ConcurrentHashMap<String, SyncStateEntity>()
         val channels = ConcurrentHashMap<Long, ChannelEntity>()
+        val movies = ConcurrentHashMap<Long, MovieEntity>()
+        val series = ConcurrentHashMap<Long, SeriesEntity>()
         @Suppress("UNCHECKED_CAST")
         val dao = Proxy.newProxyInstance(CatalogDao::class.java.classLoader, arrayOf(CatalogDao::class.java)) { _, method, args ->
             when (method.name) {
@@ -39,6 +55,9 @@ class LibrarySyncSafetyTest {
                 "upsertCategories", "pruneCategories" -> Unit
                 "upsertChannels" -> { (args!![0] as List<ChannelEntity>).forEach { channels[it.streamId] = it }; Unit }
                 "pruneChannels" -> { val gen = args!![1] as Long; channels.entries.removeIf { it.value.generation < gen }; Unit }
+                "insertMovieBatch" -> { (args!![1] as List<MovieEntity>).forEach { movies[it.streamId] = it }; Unit }
+                "insertSeriesBatch" -> { (args!![1] as List<SeriesEntity>).forEach { series[it.seriesId] = it }; Unit }
+                "finishMovies", "finishSeries" -> Unit
                 else -> error("Unexpected DAO operation: ${method.name}")
             }
         } as CatalogDao
@@ -103,6 +122,42 @@ class LibrarySyncSafetyTest {
             assertEquals(1000, db.channels.size)
             assertEquals("complete", db.states["live"]!!.status)
             assertTrue(errors.isEmpty())
+        } finally { scope.cancel(); server.shutdown() }
+    }
+
+    @Test fun returningFromPlaybackDoesNotDownloadCompletedCataloguesAgain() = runBlocking {
+        val movieBody = (1..1000).joinToString(",", "[", "]") { """{"stream_id":$it,"name":"Film $it"}""" }
+        val actions = CopyOnWriteArrayList<String>()
+        val server = MockWebServer().apply {
+            dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    val action = request.requestUrl!!.queryParameter("action")!!
+                    actions += action
+                    return when (action) {
+                        "get_live_streams" -> MockResponse().setBody("""[{"stream_id":1,"name":"News"}]""")
+                        "get_vod_streams" -> MockResponse().setBody(movieBody).throttleBody(1024, 20, TimeUnit.MILLISECONDS)
+                        "get_series" -> MockResponse().setBody("""[{"series_id":1,"name":"Serial"}]""")
+                        else -> MockResponse().setBody("[]")
+                    }
+                }
+            }
+            start()
+        }
+        val db = DatabaseFake()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val sync = LibrarySync(db.dao, scope)
+            sync.refresh("a", XtreamClient(OkHttpClient(), ProviderConfig(server.url("/").toString(), "demo", "demo", true)))
+            withTimeout(5_000) { sync.progress.first { it.current == CatalogKind.MOVIE && it.itemsInCurrent >= 500 } }
+            sync.setForeground(false)
+            withTimeout(2_000) { sync.progress.first { it.paused && !it.running } }
+            sync.setForeground(true)
+            withTimeout(10_000) { sync.progress.first { !it.running && !it.paused } }
+            assertEquals(1, actions.count { it == "get_live_streams" })
+            assertEquals(2, actions.count { it == "get_vod_streams" })
+            assertEquals(1, actions.count { it == "get_series" })
+            assertEquals(1000, db.states["movie"]!!.count)
+            assertEquals("complete", db.states["series"]!!.status)
         } finally { scope.cancel(); server.shutdown() }
     }
 }

@@ -20,7 +20,7 @@ data class ChannelEntity(
 @Entity(
     tableName = "movies", primaryKeys = ["accountId", "streamId"],
     indices = [
-        Index("accountId", "groupKey"), Index("accountId", "isPrimary", "added"),
+        Index("accountId", "groupKey", "streamId"), Index("accountId", "isPrimary", "added"),
         Index("accountId", "categoryId", "isPrimary"), Index("accountId", "isPrimary", "title"),
     ],
 )
@@ -34,7 +34,7 @@ data class MovieEntity(
 @Entity(
     tableName = "series", primaryKeys = ["accountId", "seriesId"],
     indices = [
-        Index("accountId", "groupKey"), Index("accountId", "isPrimary", "lastModified"),
+        Index("accountId", "groupKey", "seriesId"), Index("accountId", "isPrimary", "lastModified"),
         Index("accountId", "categoryId", "isPrimary"), Index("accountId", "isPrimary", "title"),
     ],
 )

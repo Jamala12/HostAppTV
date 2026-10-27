@@ -3,6 +3,9 @@ package org.hostapptv.player.ui.settings
 import android.media.MediaCodecList
 import android.os.Build
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
@@ -30,9 +33,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
@@ -89,6 +95,8 @@ fun SettingsScreen(onSignOut: () -> Unit, onRefresh: () -> Unit) {
     val first = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
+        // LazyColumn must attach the first status row before it can take remote focus.
+        delay(32)
         runCatching { first.requestFocus() }
         runCatching { withContext(Dispatchers.IO) { nav.session.client.authenticate() } }
             .onSuccess { account = it }.onFailure { accountError = it.message }
@@ -105,16 +113,18 @@ fun SettingsScreen(onSignOut: () -> Unit, onRefresh: () -> Unit) {
         item {
             listOf("live" to "Live TV", "movie" to "Movies", "series" to "Series").forEach { (k, label) ->
                 val st = states.firstOrNull { it.kind == k }
-                Fact(label, when {
+                val status = when {
                     sync.running && sync.current?.key == k -> "Refreshing… ${sync.itemsInCurrent} saved so far"
                     st == null -> "Not loaded yet"
                     st.status == "failed" -> "Last refresh failed${st.error?.let { ": $it" } ?: ""}" + (st.lastCompleteAt?.let { " · library from ${time(it)} still in use" } ?: "")
                     st.lastCompleteAt != null -> "${st.count} provider entries · updated ${time(st.lastCompleteAt)}"
                     else -> st.status
-                })
+                }
+                LibraryStatus(label, status, Modifier.testTag("settings-library-$k")
+                    .then(if (k == "live") Modifier.focusRequester(first) else Modifier))
             }
             Spacer(Modifier.height(10.dp))
-            TvButton(if (sync.running) "Refreshing…" else "Refresh library", onRefresh, Modifier.focusRequester(first), icon = AppIcons.Refresh, enabled = !sync.running)
+            TvButton(if (sync.running) "Refreshing…" else "Refresh library", { if (!sync.running) onRefresh() }, icon = AppIcons.Refresh)
             Text("Refreshing replaces the saved catalogue only after each part downloads completely. Favourites and progress are kept.",
                 style = MaterialTheme.typography.bodySmall, color = Ink.muted, modifier = Modifier.padding(top = 8.dp))
             Text("Bulk refresh pauses while you watch and when you leave the app, then resumes when you return. Already-saved content stays usable.",
@@ -249,6 +259,20 @@ fun SettingsScreen(onSignOut: () -> Unit, onRefresh: () -> Unit) {
         }
     }
     }
+    }
+}
+
+@Composable
+private fun LibraryStatus(label: String, value: String, modifier: Modifier) {
+    var focused by remember { mutableStateOf(false) }
+    Row(modifier.fillMaxWidth()
+        .onFocusChanged { focused = it.isFocused }
+        .then(if (focused) Modifier.border(BorderStroke(Dimens.focusBorder, Ink.focus), MaterialTheme.shapes.small) else Modifier)
+        .semantics(mergeDescendants = true) { contentDescription = "$label. $value" }
+        .focusable()
+        .padding(horizontal = 8.dp, vertical = 5.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = Ink.muted, modifier = Modifier.width(212.dp))
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = Ink.text)
     }
 }
 

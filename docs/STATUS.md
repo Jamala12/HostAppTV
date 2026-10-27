@@ -1,8 +1,22 @@
-# First release: implementation status and evidence
+# Implementation status and evidence
 
-Updated 20 October 2026. Version 0.3.0 (release `org.hostapptv.player`, debug `org.hostapptv.player.debug`).
+Updated 27 October 2026. Source version 0.3.3 (release `org.hostapptv.player`, debug `org.hostapptv.player.debug`).
 
 This document separates checks that were run from tests that still need the Fire TV Stick. None of the performance or soak gates in [ACCEPTANCE.md](ACCEPTANCE.md) has been run on hardware. Do not read any statement here as a claim about crash stability or performance on the stick.
+
+## Library refresh and live recovery (0.3.3)
+
+Large movie/series imports could spend seconds regrouping each batch because SQLite scanned an account's entries to select the first edition. Covering indexes now include the group and provider ID. Database version 2 installs those indexes without rebuilding tables or clearing saved data. The native upgrade test preserves catalogue entries, favourites and watch positions from version 1.
+
+An interrupted refresh retains completed sections rather than downloading them again on return. At startup, failed/interrupted sections are retried even when their previous successful timestamp is recent; fresh successful sections are retained. Non-empty JSON error objects are rejected instead of being recorded as successful zero-entry catalogues.
+
+Settings' library status rows take remote focus. Up from Refresh reaches Series, Movies and Live TV, with the Library heading visible. Refresh remains reachable while a refresh is running. Full error text can wrap instead of being truncated to two lines.
+
+Playback uses one 15-second recovery deadline that includes pending connections, buffering and retry delays. Reconnection opens a fresh live media source after the old connection closes, rather than reusing an exhausted progressive source. Connection accounting is atomic. Healthy playback resets the retry budget; leaving cancels pending retries and closes the stream. The loading/recovery panel shows a countdown and Leave, and remote Back exits immediately.
+
+Verification: **56 JVM tests** and **18 native emulator checks**, including database upgrade, D-pad navigation, a silent socket reaching the retry screen at 15 seconds, leaving while that socket is pending, recovery after HTTP 503 responses, and reconnecting a progressive live stream dropped after eight seconds. The Settings navigation check also passes at **130% Android text size**. A private real-provider full import completed all three catalogues, approximately 290,000 entries, in 43 seconds on the Android TV API 31 emulator. No provider data or access details are included in the source or APK.
+
+The reported every-30-second live disconnect did not reproduce in the baseline emulator check: three real-provider channels each played for 90 seconds without reconnecting. These changes improve recovery and refresh behaviour; the physical Fire TV still needs the owner's playback and refresh check. The package and signing certificate are retained for an in-place APK update.
 
 ## Public HostAppTV rebrand (0.3.0)
 
@@ -46,7 +60,7 @@ The 0.2.0 section and earlier 0.1.0 evidence below are historical; the 0.3.0 che
 | Details | Movies have editions, Resume / Start over and My List. Series have seasons, episodes with progress, a Resume or Next button and editions. |
 | Search | Local search across all catalogues with accent and Arabic normalisation. Matches are ranked exact, then prefix, then word prefix, then contains. Results show per-scope counts, a coverage warning while a sync is incomplete, and recent searches. |
 | My List | Saved channels, movies and series for the current account. Items the provider has removed are labelled, and pressing OK removes them. |
-| Player | Media3 with a SurfaceView. One player per playback screen and one provider connection at a time, enforced by a counting data source. Channel up/down is debounced. Left/Right shows a seek preview that OK commits. Audio and subtitle panels are available. Up next / Play next episode appears at the end of an episode. Automatic retries are limited to 3, with backoff, inside a 30-second window, plus prepare and stall watchdogs. 401/403/404/410 responses fail immediately. 4K video that would need a software decoder is refused. Progress is saved every 15 s and on pause or exit. The player is released in `onStop`, and returning never restarts live TV silently. |
+| Player | Media3 with a SurfaceView. One player per playback screen, with connection accounting and closing checks on channel changes and retries. Channel up/down is debounced. Left/Right shows a seek preview that OK commits. Audio, subtitles and next-episode controls are available. Automatic recovery has one 15-second deadline, with Leave and Back available throughout. 401/403/404/410 responses fail immediately. 4K video that would need a software decoder is refused. Progress is saved every 15 s and on pause or exit. The player is released in `onStop`, and returning never restarts live TV silently. |
 | Settings | Library status and refresh, live format (MPEG-TS or HLS), preferred edition language, account status, sign-out confirmation, clearing the artwork cache, and a list of this device's hardware decoders (useful for checking HEVC and 4K on the stick). |
 | Security | Credentials are removed from logs. Backup and device transfer are disabled. Stream URLs are built at play time and never stored. The app enforces the HTTP opt-in, and certificate checks are never disabled. |
 

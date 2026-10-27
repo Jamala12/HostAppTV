@@ -13,17 +13,19 @@ class RetryPolicyTest {
     private var now = 0L
     private fun policy() = RetryPolicy(clock = { now })
 
-    @Test fun `transient failures retry three times with backoff then give up`() {
+    @Test fun `transient failures keep retrying while the recovery window is open`() {
         val p = policy()
         val delays = (1..3).map { (p.onFailure(FailureClass.TRANSIENT) as RetryDecision.Retry).also { now += it.delayMs + 2_000 }.delayMs }
-        assertEquals(listOf(1_000L, 3_000L, 6_000L), delays)
+        assertEquals(listOf(500L, 1_000L, 2_000L), delays)
+        assertTrue(p.onFailure(FailureClass.TRANSIENT) is RetryDecision.Retry)
+        now = 15_000
         assertEquals(RetryDecision.GiveUp(FailureClass.TRANSIENT), p.onFailure(FailureClass.TRANSIENT))
     }
 
     @Test fun `recovery window bounds total retry time`() {
         val p = policy()
         assertTrue(p.onFailure(FailureClass.TRANSIENT) is RetryDecision.Retry)
-        now += 28_000 // a long stall after the first retry
+        now += 15_000 // pending connections consume the same deadline as retry delays
         assertEquals(RetryDecision.GiveUp(FailureClass.TRANSIENT), p.onFailure(FailureClass.TRANSIENT))
     }
 
@@ -35,10 +37,28 @@ class RetryPolicyTest {
 
     @Test fun `sustained healthy playback restores the budget`() {
         val p = policy()
-        repeat(3) { p.onFailure(FailureClass.TRANSIENT); now += 7_000 }
-        p.onHealthy(); now += 61_000; p.onHealthy()
+        p.onFailure(FailureClass.TRANSIENT)
+        p.onHealthy(); now += 3_000; p.onHealthy()
         assertEquals(0, p.attemptsUsed)
         assertTrue(p.onFailure(FailureClass.TRANSIENT) is RetryDecision.Retry)
+    }
+
+    @Test fun `buffering consumes the budget before a retry is attempted`() {
+        val p = policy()
+        p.beginRecovery(); now = 12_000
+        assertEquals(3_000L, p.remainingMs)
+        p.onFailure(FailureClass.TRANSIENT)
+        assertEquals(3_000L, p.remainingMs)
+        now = 15_000
+        assertEquals(0L, p.remainingMs)
+        assertEquals(RetryDecision.GiveUp(FailureClass.TRANSIENT), p.onFailure(FailureClass.TRANSIENT))
+    }
+
+    @Test fun `brief readiness does not restart a failing recovery window`() {
+        val p = policy()
+        p.beginRecovery(); now = 5_000; p.onHealthy(); now = 6_000
+        p.onFailure(FailureClass.TRANSIENT)
+        assertEquals(9_000L, p.remainingMs)
     }
 
     @Test fun `behind live window rejoins immediately`() {

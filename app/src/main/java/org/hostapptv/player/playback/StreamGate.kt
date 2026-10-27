@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -42,7 +43,7 @@ class StreamGate {
         override fun addTransferListener(transferListener: TransferListener) = delegate.addTransferListener(transferListener)
 
         override fun open(dataSpec: DataSpec): Long {
-            synchronized(this) { if (!counted) { counted = true; _open.value += 1 } }
+            synchronized(this) { if (!counted) { counted = true; _open.update { it + 1 } } }
             return delegate.open(dataSpec)
         }
 
@@ -52,7 +53,7 @@ class StreamGate {
 
         override fun close() {
             try { delegate.close() } finally {
-                synchronized(this) { if (counted) { counted = false; _open.value -= 1 } }
+                synchronized(this) { if (counted) { counted = false; _open.update { it - 1 } } }
             }
         }
     }

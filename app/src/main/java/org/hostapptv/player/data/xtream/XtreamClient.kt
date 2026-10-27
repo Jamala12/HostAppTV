@@ -263,8 +263,14 @@ class XtreamClient(private val http: OkHttpClient, val config: ProviderConfig) {
                 val r = JsonReader.of(resp.body.source()) // strict: an HTML error page must not read as data
                 when (r.peek()) {
                     JsonReader.Token.BEGIN_ARRAY -> Unit
-                    // Some panels answer {} for an empty catalogue; anything else is not a catalogue.
-                    JsonReader.Token.BEGIN_OBJECT -> { r.skipValue(); return@withContext 0 }
+                    // Only a genuinely empty object is an empty catalogue. Error/auth envelopes
+                    // must not be cached as a successful zero-item refresh.
+                    JsonReader.Token.BEGIN_OBJECT -> {
+                        r.beginObject()
+                        if (r.hasNext()) throw XtreamException.Malformed(null)
+                        r.endObject()
+                        return@withContext 0
+                    }
                     else -> throw XtreamException.Malformed(null)
                 }
                 r.beginArray()

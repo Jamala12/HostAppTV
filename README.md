@@ -2,7 +2,7 @@
 
 A lightweight native IPTV player for Fire TV and Android TV, with a dark ink and sage interface built for the remote.
 
-**Status: public release (0.3.2), with debug and signed release builds.** The household requirements are confirmed in [PRODUCT.md](PRODUCT.md). Emulator checks use a synthetic provider; the app has **not** yet been tested on the Fire TV Stick. [docs/STATUS.md](docs/STATUS.md) lists what was checked and what still needs the device.
+**Source version: 0.3.3, with debug and signed release builds.** The household requirements are confirmed in [PRODUCT.md](PRODUCT.md). [docs/STATUS.md](docs/STATUS.md) lists emulator checks and what still needs the Fire TV Stick.
 
 The primary device is the **Fire TV Stick 4K, 2nd generation** (AFTKM, Fire OS 8.1.8.2, 32-bit app ABI), on a **55-inch Philips Ambilight 4K**. The priorities are avoiding crashes, discovering new and trending media, and smooth playback and remote navigation. One shared setup holds favourites and progress.
 
@@ -75,6 +75,10 @@ Run `./gradlew assembleRelease`. With all four values, the signed APK is `app/bu
 5. Open **HostAppTV** from **Your Apps & Channels**. Enter your provider's server address, username and password. Choose **Allow unencrypted HTTP** only if your provider has no `https://` address.
 
 To update, run `adb install -r` with the new APK. Favourites, progress and settings are kept.
+
+Version 0.3.3 speeds up large movie/series imports and upgrades the existing database without clearing it. Refreshes retain completed sections when interrupted, and failed sections are retried on the next launch. Settings' library status rows can be reached with Up/Down on the remote, including Live TV above the refresh button.
+
+If playback loses its connection, automatic recovery shares a 15-second limit across all attempts. **Leave** and the remote's **Back** button work during that wait. Live retries open a fresh stream after the previous connection closes. A recovered stream must play steadily before the retry budget resets.
 
 ## Discovery and household playback
 

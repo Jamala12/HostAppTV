@@ -81,6 +81,14 @@ class XtreamClientTest {
         assertEquals(0, client().movies { fail("no batch expected") })
     }
 
+    @Test fun `error objects are not successful empty catalogues`() = runBlocking {
+        for (body in listOf("""{"user_info":{"auth":0}}""", """{"error":"try again"}""")) {
+            json(body)
+            try { client().movies { fail("No batch expected") }; fail("Error envelope was accepted") }
+            catch (_: XtreamException.Malformed) { }
+        }
+    }
+
     @Test fun `streams a large catalogue in bounded batches`() = runBlocking {
         val total = 100_000
         val body = Buffer().apply {
