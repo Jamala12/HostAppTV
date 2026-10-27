@@ -99,7 +99,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"error": "auth"}, 401)
             sid = int(file.split(".")[0])
             if kind == "live": return self.live(sid)
-            return self.vod(file)
+            return self.vod(file, slow_seek=sid == 9005)
         self.send_json({"error": "not found"}, 404)
 
     def api(self, q):
@@ -172,7 +172,7 @@ class Handler(BaseHTTPRequestHandler):
                 log(f"CLOSE live {sid} after {time.time() - start:.1f}s  active={active_streams}")
             self.close_connection = True
 
-    def vod(self, file):
+    def vod(self, file, slow_seek=False):
         ext = file.rsplit(".", 1)[-1]
         path = os.path.join(MEDIA, "feature.mkv" if ext == "mkv" else "feature.mp4")
         if not os.path.exists(path): return self.send_json({}, 404)
@@ -190,6 +190,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(end - start + 1)); self.end_headers()
         log(f"VOD {file} range={start}-{end}")
         try:
+            if slow_seek and start > 0:
+                # Out-of-buffer seeks take longer than the live-only 15-second deadline.
+                time.sleep(18)
             with open(path, "rb") as f:
                 f.seek(start); left = end - start + 1
                 while left > 0:

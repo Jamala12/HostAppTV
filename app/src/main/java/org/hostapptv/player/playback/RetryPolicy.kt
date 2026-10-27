@@ -18,6 +18,7 @@ class RetryPolicy(
     private val backoffMs: List<Long> = listOf(500, 1_000, 2_000),
     private val healthyResetMs: Long = 3_000,
     private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
+    private val clampBackoffToWindow: Boolean = true,
 ) {
     private var attempts = 0
     private var windowStart = -1L
@@ -36,6 +37,7 @@ class RetryPolicy(
         beginRecovery()
         if (attempts >= maxRetries || remainingMs == 0L) return RetryDecision.GiveUp(FailureClass.TRANSIENT)
         val delay = if (failure == FailureClass.BEHIND_LIVE_WINDOW) 0L else backoffMs[attempts.coerceAtMost(backoffMs.lastIndex)]
+        if (!clampBackoffToWindow && delay > remainingMs) return RetryDecision.GiveUp(FailureClass.TRANSIENT)
         attempts++
         return RetryDecision.Retry(delay.coerceAtMost(remainingMs), attempts)
     }
@@ -51,6 +53,14 @@ class RetryPolicy(
 
     fun reset() { attempts = 0; windowStart = -1L; healthySince = -1L }
     val attemptsUsed: Int get() = attempts
+
+    companion object {
+        /** Movies/episodes keep their original retry budget, starting at a real failure, not a seek. */
+        fun onDemand(clock: () -> Long = { System.nanoTime() / 1_000_000 }) = RetryPolicy(
+            maxRetries = 3, windowMs = 30_000, backoffMs = listOf(1_000, 3_000, 6_000),
+            healthyResetMs = 60_000, clock = clock, clampBackoffToWindow = false,
+        )
+    }
 }
 
 /** Maps Media3 PlaybackException error codes (kept as ints for JVM tests) and HTTP status to a failure class. */

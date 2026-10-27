@@ -28,9 +28,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import okhttp3.Call
+import okhttp3.EventListener
 import okhttp3.OkHttpClient
 import org.hostapptv.player.BuildConfig
 import org.hostapptv.player.core.AppLog
+import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 
 enum class Phase { IDLE, LOADING, PLAYING, PAUSED, BUFFERING, RETRYING, ENDED, ERROR, SUSPENDED }
 
@@ -78,7 +82,7 @@ class PlaybackController(
     private var generation = 0
     private var currentUrl: String? = null
     private var currentKind: ContentKind? = null
-    private val retry = RetryPolicy()
+    private var retry = RetryPolicy()
     private var retryJob: Job? = null
     private var watchdogJob: Job? = null
     private var recoveryJob: Job? = null
@@ -88,11 +92,21 @@ class PlaybackController(
     private var openJob: Job? = null
     private var subtitleMode = "foreign"
     private var manualSubtitles = false
+    // Keep body reads cancellable too: OkHttp's dispatcher no longer lists a call
+    // once its response callback returns, even when Media3 is still reading it.
+    private val mediaCalls = ConcurrentHashMap.newKeySet<Call>()
+    private val mediaHttp = http.newBuilder().eventListener(object : EventListener() {
+        override fun callStart(call: Call) { mediaCalls.add(call) }
+        override fun callEnd(call: Call) { mediaCalls.remove(call) }
+        override fun callFailed(call: Call, ioe: IOException) { mediaCalls.remove(call) }
+    }).build()
+
+    private fun cancelMediaCalls() { mediaCalls.toList().forEach { it.cancel() } }
 
     fun setSubtitleMode(mode: String) { subtitleMode = mode.takeIf { it in SubtitlePolicy.modes } ?: "foreign" }
 
     private fun ensurePlayer(): ExoPlayer = player ?: run {
-        val dataSource = OkHttpDataSource.Factory(http).setUserAgent("HostAppTV/${BuildConfig.VERSION_NAME} (Linux; Android)")
+        val dataSource = OkHttpDataSource.Factory(mediaHttp).setUserAgent("HostAppTV/${BuildConfig.VERSION_NAME} (Linux; Android)")
         val loadControl = DefaultLoadControl.Builder()
             .setTargetBufferBytes(32 * 1024 * 1024)
             .setPrioritizeTimeOverSizeThresholds(false)
@@ -123,7 +137,7 @@ class PlaybackController(
         val gen = ++generation
         cancelJobs()
         openJob?.cancel()
-        retry.reset()
+        retry = if (request.kind == ContentKind.LIVE) RetryPolicy() else RetryPolicy.onDemand()
         reachedReady = false
         currentUrl = url
         currentKind = request.kind
@@ -131,6 +145,7 @@ class PlaybackController(
         val p = ensurePlayer()
         p.stop()
         p.clearMediaItems()
+        cancelMediaCalls()
         _state.value = PlayerUiState(phase = Phase.LOADING, isLive = request.kind == ContentKind.LIVE)
         val item = MediaItem.Builder().setUri(url).setMimeType(mimeFor(request.ext)).build()
         if (request.kind == ContentKind.LIVE || startPositionMs <= 0) p.setMediaItem(item) else p.setMediaItem(item, startPositionMs)
@@ -146,7 +161,7 @@ class PlaybackController(
             p.playWhenReady = playWhenReady
             p.prepare()
             if (playWhenReady) startRecoveryDeadline(gen)
-            startWatchdog(gen, PREPARE_TIMEOUT_MS)
+            startWatchdog(gen, prepareTimeoutMs)
             startTicker()
             AppLog.i("open ${request.kind} ${request.contentId} gen=$gen")
         }
@@ -183,6 +198,7 @@ class PlaybackController(
         _state.update { it.copy(phase = Phase.LOADING, failure = null, errorDetail = null, retryAttempt = 0) }
         val gen = generation
         p.stop()
+        cancelMediaCalls()
         startRecoveryDeadline(gen)
         retryJob = scope.launch {
             if (!gate.awaitClosed()) {
@@ -191,7 +207,7 @@ class PlaybackController(
             }
             if (gen != generation) return@launch
             prepareAgain(p)
-            startWatchdog(gen, RETRY_PREPARE_TIMEOUT_MS)
+            startWatchdog(gen, retryPrepareTimeoutMs)
         }
         startTicker()
     }
@@ -224,6 +240,7 @@ class PlaybackController(
         cancelJobs()
         saveProgress()
         player?.let { it.stop(); it.clearMediaItems() }
+        cancelMediaCalls()
         _state.update { it.copy(phase = Phase.LOADING, failure = null, errorDetail = null) }
     }
 
@@ -235,6 +252,7 @@ class PlaybackController(
         player?.let {
             it.removeListener(listener)
             it.removeAnalyticsListener(analytics)
+            cancelMediaCalls()
             it.release()
         }
         player = null
@@ -260,7 +278,7 @@ class PlaybackController(
 
     /** One deadline covers every retry and pending socket, rather than restarting for each prepare(). */
     private fun startRecoveryDeadline(gen: Int) {
-        if (recoveryJob != null) return
+        if (currentKind != ContentKind.LIVE || recoveryJob != null) return
         retry.beginRecovery()
         _state.update { it.copy(recoverySecondsLeft = ((retry.remainingMs + 999) / 1_000).toInt()) }
         recoveryJob = scope.launch {
@@ -334,6 +352,7 @@ class PlaybackController(
                 retryJob?.cancel()
                 // Close the stalled connection now; prepare() is a no-op unless the player is idle.
                 if (p.playbackState != Player.STATE_IDLE) p.stop()
+                cancelMediaCalls()
                 watchdogJob?.cancel()
                 retryJob = scope.launch {
                     delay(d.delayMs)
@@ -345,7 +364,7 @@ class PlaybackController(
                     if (gen != generation) return@launch
                     if (failure == FailureClass.BEHIND_LIVE_WINDOW) p.seekToDefaultPosition()
                     prepareAgain(p)
-                    startWatchdog(gen, RETRY_PREPARE_TIMEOUT_MS)
+                    startWatchdog(gen, retryPrepareTimeoutMs)
                 }
             }
             is RetryDecision.GiveUp -> {
@@ -360,6 +379,7 @@ class PlaybackController(
         saveProgress()
         _state.update { it.copy(phase = Phase.ERROR, failure = failure, errorDetail = detail) }
         player?.stop()
+        cancelMediaCalls()
     }
 
     private val listener = object : Player.Listener {
@@ -376,7 +396,7 @@ class PlaybackController(
                     if (_state.value.phase != Phase.RETRYING && _state.value.phase != Phase.LOADING) _state.update { it.copy(phase = Phase.BUFFERING) }
                     if (p.playWhenReady) {
                         startRecoveryDeadline(generation)
-                        startWatchdog(generation, if (reachedReady) STALL_TIMEOUT_MS else PREPARE_TIMEOUT_MS)
+                        startWatchdog(generation, if (reachedReady) stallTimeoutMs else prepareTimeoutMs)
                     }
                 }
                 Player.STATE_ENDED -> {
@@ -396,7 +416,7 @@ class PlaybackController(
                 retry.reset()
             } else if (p.playbackState == Player.STATE_BUFFERING) {
                 startRecoveryDeadline(generation)
-                startWatchdog(generation, if (reachedReady) STALL_TIMEOUT_MS else PREPARE_TIMEOUT_MS)
+                startWatchdog(generation, if (reachedReady) stallTimeoutMs else prepareTimeoutMs)
             }
         }
 
@@ -465,6 +485,10 @@ class PlaybackController(
 
     // Declared last: the listeners above must be initialised before the player is built.
     init { ensurePlayer() }
+
+    private val prepareTimeoutMs get() = if (currentKind == ContentKind.LIVE) PREPARE_TIMEOUT_MS else 15_000L
+    private val retryPrepareTimeoutMs get() = if (currentKind == ContentKind.LIVE) RETRY_PREPARE_TIMEOUT_MS else 10_000L
+    private val stallTimeoutMs get() = if (currentKind == ContentKind.LIVE) STALL_TIMEOUT_MS else 20_000L
 
     companion object {
         const val PREPARE_TIMEOUT_MS = 5_000L

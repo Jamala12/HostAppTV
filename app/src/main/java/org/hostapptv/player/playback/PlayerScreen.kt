@@ -45,6 +45,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -99,6 +100,7 @@ fun PlayerScreen(
     var seekTarget by remember { mutableStateOf<Long?>(null) }
     var interaction by remember { mutableIntStateOf(0) }
     var infoFlash by remember { mutableIntStateOf(1) }
+    var collapsingControls by remember { mutableStateOf(false) }
 
     val rootFocus = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
@@ -121,10 +123,10 @@ fun PlayerScreen(
         if (state.phase == Phase.PAUSED) controlsVisible = true
         if (state.phase == Phase.ENDED && req.kind == ContentKind.EPISODE) onRequestNextEpisode()
     }
-    LaunchedEffect(controlsVisible, panel, blocking, recovering) {
+    LaunchedEffect(controlsVisible, panel, blocking) {
         runCatching {
             when {
-                blocking || panel != Panel.NONE || recovering -> Unit // the panel focuses its own first action
+                blocking || panel != Panel.NONE -> Unit // the panel focuses its own first action
                 controlsVisible -> { delay(16); playFocus.requestFocus() }
                 else -> rootFocus.requestFocus()
             }
@@ -144,7 +146,14 @@ fun PlayerScreen(
 
     Box(
         Modifier.fillMaxSize().background(Color.Black)
-            .onPreviewKeyEvent { if (it.type == KeyEventType.KeyDown) interaction++; false }
+            .onPreviewKeyEvent { ev ->
+                if (ev.type == KeyEventType.KeyDown) interaction++
+                if (ev.key == Key.DirectionUp && (collapsingControls || (controlsVisible && panel == Panel.NONE && !blocking))) {
+                    collapsingControls = ev.type != KeyEventType.KeyUp
+                    controlsVisible = false
+                    true
+                } else false
+            }
             .onKeyEvent { ev ->
                 if (ev.type != KeyEventType.KeyDown) return@onKeyEvent false
                 val c = controller
@@ -180,14 +189,19 @@ fun PlayerScreen(
         Box(
             Modifier.fillMaxSize().focusRequester(rootFocus).focusable()
                 .onKeyEvent { ev ->
-                    if (ev.type != KeyEventType.KeyDown || controlsVisible || blocking) return@onKeyEvent false
+                    if (controlsVisible || blocking) return@onKeyEvent false
                     val c = controller
-                    when (ev.key) {
-                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                    // Commit on key-up so revealing controls or buffering cannot pass the
+                    // same OK release into a newly focused button.
+                    if (ev.key in listOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter)) {
+                        if (ev.type == KeyEventType.KeyUp) {
                             val target = seekTarget
                             if (target != null) { c?.seekTo(target); seekTarget = null } else controlsVisible = true
-                            true
                         }
+                        return@onKeyEvent true
+                    }
+                    if (ev.type != KeyEventType.KeyDown) return@onKeyEvent false
+                    when (ev.key) {
                         Key.DirectionLeft, Key.DirectionRight -> {
                             if (state.seekable) {
                                 val step = if (ev.key == Key.DirectionLeft) -10_000L else 10_000L
@@ -212,7 +226,7 @@ fun PlayerScreen(
         }
 
         if ((state.phase == Phase.LOADING || state.phase == Phase.RETRYING || state.phase == Phase.BUFFERING) && !blocking) {
-            LoadingBadge(state, onExit, Modifier.align(Alignment.Center))
+            LoadingBadge(state, isLive, Modifier.align(Alignment.Center))
         }
 
         seekTarget?.let { target ->
@@ -222,6 +236,7 @@ fun PlayerScreen(
         AnimatedVisibility(controlsVisible && !blocking, enter = fadeIn(tween(140)), exit = fadeOut(tween(160)), modifier = Modifier.align(Alignment.BottomCenter)) {
             Column(
                 Modifier.fillMaxWidth()
+                    .testTag("player-controls")
                     .background(Brush.verticalGradient(0f to Color.Transparent, 0.35f to Ink.canvas.copy(alpha = 0.82f), 1f to Ink.canvas.copy(alpha = 0.96f)))
                     .padding(start = Dimens.safeH, end = Dimens.safeH, bottom = Dimens.safeV, top = 48.dp),
             ) {
@@ -243,8 +258,10 @@ fun PlayerScreen(
                     TvButton(if (playing) "Pause" else "Play", { controller?.togglePlayPause() }, Modifier.focusRequester(playFocus),
                         icon = if (playing) AppIcons.Pause else AppIcons.Play, tone = ButtonTone.Primary)
                     if (state.seekable) {
-                        TvButton("10s", { controller?.seekTo(state.positionMs - 10_000) }, icon = AppIcons.Rewind)
-                        TvButton("10s", { controller?.seekTo(state.positionMs + 10_000) }, icon = AppIcons.Forward)
+                        TvButton("10s", { controller?.seekTo((controller?.player?.currentPosition ?: state.positionMs) - 10_000) },
+                            Modifier.testTag("player-seek-back"), icon = AppIcons.Rewind)
+                        TvButton("10s", { controller?.seekTo((controller?.player?.currentPosition ?: state.positionMs) + 10_000) },
+                            Modifier.testTag("player-seek-forward"), icon = AppIcons.Forward)
                     }
                     if (isLive) {
                         TvButton("Previous", { onChannelStep(-1) })
@@ -312,22 +329,19 @@ private fun TopInfo(req: PlaybackRequest, epg: List<XEpgEntry>, state: PlayerUiS
 }
 
 @Composable
-private fun LoadingBadge(state: PlayerUiState, onExit: () -> Unit, modifier: Modifier) {
-    val leaveFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { delay(32); runCatching { leaveFocus.requestFocus() } }
+private fun LoadingBadge(state: PlayerUiState, isLive: Boolean, modifier: Modifier) {
     Column(modifier.background(Ink.scrim, MaterialTheme.shapes.medium).padding(horizontal = 28.dp, vertical = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Emblem(width = 30.dp)
         Spacer(Modifier.height(10.dp))
         Text(
             when (state.phase) {
-                Phase.RETRYING -> "Reconnecting… ${state.recoverySecondsLeft}s left"
-                Phase.BUFFERING -> "Buffering… ${state.recoverySecondsLeft}s left"
-                else -> "Opening stream… ${state.recoverySecondsLeft}s left"
+                Phase.RETRYING -> if (isLive) "Reconnecting… ${state.recoverySecondsLeft}s left" else "Reconnecting… attempt ${state.retryAttempt}"
+                Phase.BUFFERING -> if (isLive) "Buffering… ${state.recoverySecondsLeft}s left" else "Buffering…"
+                else -> if (isLive) "Opening stream… ${state.recoverySecondsLeft}s left" else "Opening stream…"
             },
             style = MaterialTheme.typography.bodyMedium, color = Ink.text,
         )
         Spacer(Modifier.height(10.dp))
-        TvButton("Leave", onExit, Modifier.focusRequester(leaveFocus), icon = AppIcons.Back)
         Text("Back to leave", style = MaterialTheme.typography.bodySmall, color = Ink.muted)
     }
 }

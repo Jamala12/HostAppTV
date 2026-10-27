@@ -2,7 +2,7 @@
 
 A lightweight native IPTV player for Fire TV and Android TV, with a dark ink and sage interface built for the remote.
 
-**Source version: 0.3.3, with debug and signed release builds.** The household requirements are confirmed in [PRODUCT.md](PRODUCT.md). [docs/STATUS.md](docs/STATUS.md) lists emulator checks and what still needs the Fire TV Stick.
+**Source version: 0.3.4, with debug and signed release builds.** The household requirements are confirmed in [PRODUCT.md](PRODUCT.md). [docs/STATUS.md](docs/STATUS.md) lists emulator checks and what still needs the Fire TV Stick.
 
 The primary device is the **Fire TV Stick 4K, 2nd generation** (AFTKM, Fire OS 8.1.8.2, 32-bit app ABI), on a **55-inch Philips Ambilight 4K**. The priorities are avoiding crashes, discovering new and trending media, and smooth playback and remote navigation. One shared setup holds favourites and progress.
 
@@ -78,7 +78,9 @@ To update, run `adb install -r` with the new APK. Favourites, progress and setti
 
 Version 0.3.3 speeds up large movie/series imports and upgrades the existing database without clearing it. Refreshes retain completed sections when interrupted, and failed sections are retried on the next launch. Settings' library status rows can be reached with Up/Down on the remote, including Live TV above the refresh button.
 
-If playback loses its connection, automatic recovery shares a 15-second limit across all attempts. **Leave** and the remote's **Back** button work during that wait. Live retries open a fresh stream after the previous connection closes. A recovered stream must play steadily before the retry budget resets.
+Live TV recovery shares a 15-second limit across all attempts. The remote's **Back** button leaves during that wait. Live retries open a fresh stream after the previous connection closes. A recovered stream must play steadily before the retry budget resets.
+
+Version 0.3.4 restores the previous movie/episode retry timings: normal seeking can buffer without the live-TV countdown. The buffering message says **Back to leave** and takes no focus. The 10-second skip buttons stay selected after a jump, so repeated OK presses make 20/30-second jumps. **Up** collapses the playback bar without pausing or leaving.
 
 ## Discovery and household playback
 

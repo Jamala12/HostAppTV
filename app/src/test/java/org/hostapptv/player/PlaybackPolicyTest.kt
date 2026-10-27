@@ -64,6 +64,31 @@ class RetryPolicyTest {
     @Test fun `behind live window rejoins immediately`() {
         assertEquals(RetryDecision.Retry(0, 1), policy().onFailure(FailureClass.BEHIND_LIVE_WINDOW))
     }
+
+    @Test fun `on demand keeps three retries with the original backoff`() {
+        val p = RetryPolicy.onDemand { now }
+        val delays = (1..3).map { (p.onFailure(FailureClass.TRANSIENT) as RetryDecision.Retry).delayMs }
+        assertEquals(listOf(1_000L, 3_000L, 6_000L), delays)
+        assertEquals(RetryDecision.GiveUp(FailureClass.TRANSIENT), p.onFailure(FailureClass.TRANSIENT))
+    }
+
+    @Test fun `on demand failure window allows more than fifteen seconds but refuses a late retry`() {
+        val p = RetryPolicy.onDemand { now }
+        p.onFailure(FailureClass.TRANSIENT)
+        now = 16_000
+        assertEquals(RetryDecision.Retry(3_000, 2), p.onFailure(FailureClass.TRANSIENT))
+        now = 25_000
+        assertEquals(RetryDecision.GiveUp(FailureClass.TRANSIENT), p.onFailure(FailureClass.TRANSIENT))
+    }
+
+    @Test fun `on demand restores its retry budget after a minute of healthy playback`() {
+        val p = RetryPolicy.onDemand { now }
+        p.onFailure(FailureClass.TRANSIENT)
+        p.onHealthy(); now = 3_000; p.onHealthy()
+        assertEquals(1, p.attemptsUsed)
+        now = 60_000; p.onHealthy()
+        assertEquals(0, p.attemptsUsed)
+    }
 }
 
 class FailureClassifierTest {
