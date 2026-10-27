@@ -1,24 +1,29 @@
 # HostAppTV for Fire TV
 
+Development and future APK releases have moved to
+[`FinnMx/xtream-iptv-electron`](https://github.com/FinnMx/xtream-iptv-electron/tree/main/android).
+That repository is private: sign in with repository access to download its Android
+releases. This repository retains the historical 0.3.4 source and releases.
+
 A lightweight native IPTV player for Fire TV and Android TV, with a dark ink and sage interface built for the remote.
 
-**Source version: 0.3.4, with debug and signed release builds.** The household requirements are confirmed in [PRODUCT.md](PRODUCT.md). [docs/STATUS.md](docs/STATUS.md) lists emulator checks and what still needs the Fire TV Stick.
+**Historical source version: 0.3.4.** The household requirements are confirmed in [PRODUCT.md](PRODUCT.md). [docs/STATUS.md](docs/STATUS.md) lists emulator checks and what still needs the Fire TV Stick.
 
 The primary device is the **Fire TV Stick 4K, 2nd generation** (AFTKM, Fire OS 8.1.8.2, 32-bit app ABI), on a **55-inch Philips Ambilight 4K**. The priorities are avoiding crashes, discovering new and trending media, and smooth playback and remote navigation. One shared setup holds favourites and progress.
 
-## Download and install
+## Historical 0.3.4 download and install
 
-Download [HostAppTV.apk](https://github.com/Jamala12/HostAppTV/releases/latest/download/HostAppTV.apk) or open the [latest release](https://github.com/Jamala12/HostAppTV/releases/latest). The APK supports Android 11 / Fire OS 8 and newer, on ARM32 and ARM64 devices.
+Download [HostAppTV.apk](https://github.com/Jamala12/HostAppTV/releases/download/v0.3.4/HostAppTV.apk) or open the [historical 0.3.4 release](https://github.com/Jamala12/HostAppTV/releases/tag/v0.3.4). The APK supports Android 11 / Fire OS 8 and newer, on ARM32 and ARM64 devices.
 
 On Fire TV, install **Downloader by AFTVnews**, open it, and enter this direct URL:
 
 ```text
-https://github.com/Jamala12/HostAppTV/releases/latest/download/HostAppTV.apk
+https://github.com/Jamala12/HostAppTV/releases/download/v0.3.4/HostAppTV.apk
 ```
 
 Allow Downloader under **Settings → My Fire TV → Developer options → Install unknown apps**, then return to Downloader and install the APK. If Developer options is hidden, open **About** and select the device name seven times. ADB debugging is only needed for computer-based installation below.
 
-A numeric Downloader code is optional: create one at [AFTVnews's official shortener](https://go.aftvnews.com/) using the direct URL above. The stable URL follows future releases because each release uses the same APK filename. No account is needed to download the public APK.
+A numeric Downloader code is optional: create one at [AFTVnews's official shortener](https://go.aftvnews.com/) using the direct URL above. This public URL serves the historical 0.3.4 build only. Future APKs require access to FinnMx’s private repository.
 
 This is a fresh installation with package `org.hostapptv.player` and a new release certificate. Previous builds with a different package remain separate; their saved setup and progress do not transfer. Future HostAppTV releases using this package and certificate can update in place.
 
