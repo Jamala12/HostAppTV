@@ -21,8 +21,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,13 +37,6 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.contentDescription
@@ -90,7 +81,7 @@ import org.hostapptv.player.ui.components.PosterCard
 import org.hostapptv.player.ui.components.SectionTitle
 import org.hostapptv.player.ui.components.StatusMessage
 import org.hostapptv.player.ui.components.TvButton
-import org.hostapptv.player.ui.components.rememberImeDetacher
+import org.hostapptv.player.ui.components.TvTextInput
 import org.hostapptv.player.ui.shell.LocalNav
 import org.hostapptv.player.ui.shell.Route
 import org.hostapptv.player.ui.theme.AppIcons
@@ -148,7 +139,6 @@ fun SearchScreen() {
     val series = vm.series.collectAsLazyPagingItems()
     val field = remember { FocusRequester() }
     val fm = LocalFocusManager.current
-    val detachIme = rememberImeDetacher()
     var fieldFocused by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { if (text.isEmpty()) runCatching { field.requestFocus() } }
@@ -174,18 +164,11 @@ fun SearchScreen() {
                     Spacer(Modifier.width(12.dp))
                     Box(Modifier.weight(1f)) {
                         if (text.isEmpty()) Text("Search channels, movies and series", style = MaterialTheme.typography.bodyLarge, color = Ink.muted)
-                        BasicTextField(
-                            value = text, onValueChange = { vm.text.value = it }, singleLine = true,
-                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = Ink.text), cursorBrush = SolidColor(Ink.sage),
+                        TvTextInput(
+                            value = text, onValueChange = { vm.text.value = it }, onFocusChange = { fieldFocused = it },
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search, autoCorrectEnabled = false),
-                            keyboardActions = KeyboardActions(onSearch = { vm.remember(text); fm.moveFocus(FocusDirection.Down); detachIme() }),
-                            modifier = Modifier.fillMaxWidth().focusRequester(field).onFocusChanged { if (fieldFocused && !it.isFocused) detachIme(); fieldFocused = it.isFocused }
-                                .onPreviewKeyEvent { ev ->
-                                    if (ev.key == Key.Enter || ev.key == Key.NumPadEnter) {
-                                        if (ev.type == KeyEventType.KeyUp) { vm.remember(text); fm.moveFocus(FocusDirection.Down); detachIme() }
-                                        true
-                                    } else false
-                                }
+                            onSubmit = { vm.remember(text); fm.moveFocus(FocusDirection.Down) },
+                            modifier = Modifier.fillMaxWidth().focusRequester(field)
                                 .semantics { contentDescription = "Search" },
                         )
                     }

@@ -108,6 +108,7 @@ fun PlayerScreen(
     val errorFocus = remember { FocusRequester() }
 
     val blocking = state.phase == Phase.ERROR || state.phase == Phase.ENDED || (state.phase == Phase.IDLE && isLive)
+    val recovering = state.phase in listOf(Phase.LOADING, Phase.RETRYING, Phase.BUFFERING)
 
     // Auto-hide only while playing and idle; paused state keeps controls.
     LaunchedEffect(controlsVisible, interaction, state.phase, panel) {
@@ -120,10 +121,10 @@ fun PlayerScreen(
         if (state.phase == Phase.PAUSED) controlsVisible = true
         if (state.phase == Phase.ENDED && req.kind == ContentKind.EPISODE) onRequestNextEpisode()
     }
-    LaunchedEffect(controlsVisible, panel, blocking) {
+    LaunchedEffect(controlsVisible, panel, blocking, recovering) {
         runCatching {
             when {
-                blocking || panel != Panel.NONE -> Unit // the panel focuses its own first action
+                blocking || panel != Panel.NONE || recovering -> Unit // the panel focuses its own first action
                 controlsVisible -> { delay(16); playFocus.requestFocus() }
                 else -> rootFocus.requestFocus()
             }
@@ -133,6 +134,7 @@ fun PlayerScreen(
 
     BackHandler {
         when {
+            recovering -> onExit()
             panel != Panel.NONE -> { val from = panel; panel = Panel.NONE; runCatching { (if (from == Panel.AUDIO) audioFocus else subsFocus).requestFocus() } }
             seekTarget != null -> seekTarget = null
             controlsVisible && !blocking -> controlsVisible = false
@@ -210,7 +212,7 @@ fun PlayerScreen(
         }
 
         if ((state.phase == Phase.LOADING || state.phase == Phase.RETRYING || state.phase == Phase.BUFFERING) && !blocking) {
-            LoadingBadge(state, Modifier.align(Alignment.Center))
+            LoadingBadge(state, onExit, Modifier.align(Alignment.Center))
         }
 
         seekTarget?.let { target ->
@@ -310,18 +312,23 @@ private fun TopInfo(req: PlaybackRequest, epg: List<XEpgEntry>, state: PlayerUiS
 }
 
 @Composable
-private fun LoadingBadge(state: PlayerUiState, modifier: Modifier) {
+private fun LoadingBadge(state: PlayerUiState, onExit: () -> Unit, modifier: Modifier) {
+    val leaveFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { delay(32); runCatching { leaveFocus.requestFocus() } }
     Column(modifier.background(Ink.scrim, MaterialTheme.shapes.medium).padding(horizontal = 28.dp, vertical = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Emblem(width = 30.dp)
         Spacer(Modifier.height(10.dp))
         Text(
             when (state.phase) {
-                Phase.RETRYING -> "Reconnecting… attempt ${state.retryAttempt} of 3"
-                Phase.BUFFERING -> "Buffering…"
-                else -> "Opening stream…"
+                Phase.RETRYING -> "Reconnecting… ${state.recoverySecondsLeft}s left"
+                Phase.BUFFERING -> "Buffering… ${state.recoverySecondsLeft}s left"
+                else -> "Opening stream… ${state.recoverySecondsLeft}s left"
             },
             style = MaterialTheme.typography.bodyMedium, color = Ink.text,
         )
+        Spacer(Modifier.height(10.dp))
+        TvButton("Leave", onExit, Modifier.focusRequester(leaveFocus), icon = AppIcons.Back)
+        Text("Back to leave", style = MaterialTheme.typography.bodySmall, color = Ink.muted)
     }
 }
 

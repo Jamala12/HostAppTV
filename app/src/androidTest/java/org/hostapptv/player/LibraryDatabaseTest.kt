@@ -1,6 +1,8 @@
 package org.hostapptv.player
 
 import androidx.room.Room
+import android.database.sqlite.SQLiteDatabase
+import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.paging.PagingSource
@@ -20,6 +22,7 @@ import org.hostapptv.player.data.db.FavouriteEntity
 import org.hostapptv.player.data.db.MovieEntity
 import org.hostapptv.player.data.db.ProgressEntity
 import org.hostapptv.player.data.repo.SearchQuery
+import org.json.JSONObject
 
 /** Real SQLite on the device/emulator: grouping, generation-safe refresh, search ranking and account isolation. */
 @RunWith(AndroidJUnit4::class)
@@ -111,5 +114,55 @@ class LibraryDatabaseTest {
         user.saveProgress(p(1, null, "movie:tmdb:1", 150)); user.saveProgress(p(2, null, "movie:tmdb:2", 300, finished = true))
         val rows = user.continueWatching(a, 10).first()
         assertEquals(listOf(12L, 1L), rows.map { it.contentId }) // one entry per series, finished movie excluded, newest first
+    }
+
+    @Test fun regroupingLargeLibrariesUsesTheGroupAndIdIndex() = runBlocking {
+        val dao = db.catalog()
+        dao.upsertMovies((1L..20_000L).map { movie(a, it, "Film $it", "$it", 1) })
+        val started = SystemClock.elapsedRealtime()
+        dao.insertMovieBatch(a, (19_501L..20_000L).map { movie(a, it, "Film $it", "$it", 2) })
+        println("Regrouping 500 entries in 20000-movie synthetic catalogue: ${SystemClock.elapsedRealtime() - started}ms")
+        assertEquals(20_000, dao.movieCount(a, null).first())
+        for ((table, id) in listOf("movies" to "streamId", "series" to "seriesId")) {
+            val plan = db.openHelper.readableDatabase.query(
+                "EXPLAIN QUERY PLAN SELECT $id FROM $table WHERE accountId = ? AND groupKey = ? ORDER BY $id LIMIT 1",
+                arrayOf(a, "${if (table == "movies") "movie" else "series"}:tmdb:20000"),
+            ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(3)) } }
+            assertTrue("Edition lookup must not scan the whole account: $plan", plan.any {
+                it.contains("COVERING INDEX") && it.contains("accountId=? AND groupKey=?")
+            })
+        }
+    }
+
+    @Test fun versionOneUpgradeKeepsCatalogueFavouritesAndProgress() = runBlocking {
+        val inst = InstrumentationRegistry.getInstrumentation()
+        val context = inst.targetContext
+        val name = "catalogue-migration-test.db"
+        context.deleteDatabase(name)
+        var upgraded: AppDatabase? = null
+        try {
+            val schema = JSONObject(inst.context.assets.open("org.hostapptv.player.data.db.AppDatabase/1.json").bufferedReader().use { it.readText() }).getJSONObject("database")
+            SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(name), null).use { old ->
+                val entities = schema.getJSONArray("entities")
+                for (i in 0 until entities.length()) {
+                    val entity = entities.getJSONObject(i)
+                    val table = entity.getString("tableName")
+                    old.execSQL(entity.getString("createSql").replace("\${TABLE_NAME}", table))
+                    val indices = entity.optJSONArray("indices")
+                    if (indices != null) for (j in 0 until indices.length()) old.execSQL(indices.getJSONObject(j).getString("createSql").replace("\${TABLE_NAME}", table))
+                }
+                val setup = schema.getJSONArray("setupQueries")
+                for (i in 0 until setup.length()) old.execSQL(setup.getString(i))
+                old.execSQL("INSERT INTO movies (accountId,streamId,name,title,searchKey,groupKey,isPrimary,editionCount,generation) VALUES ('acct-a',1,'Film','Film','film','movie:tmdb:7',1,1,1)")
+                old.execSQL("INSERT INTO favourites (accountId,kind,itemKey,title,addedAt) VALUES ('acct-a','movie','movie:tmdb:7','Film',1)")
+                old.execSQL("INSERT INTO progress (accountId,kind,contentId,title,positionMs,durationMs,updatedAt,finished) VALUES ('acct-a','movie',1,'Film',123000,600000,1,0)")
+                old.version = 1
+            }
+            upgraded = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_1_2).build()
+            assertEquals(1, upgraded.catalog().movieCount(a, null).first())
+            assertTrue(upgraded.userState().isFavourite(a, "movie", "movie:tmdb:7").first())
+            assertEquals(123_000L, upgraded.userState().progress(a, "movie", 1)!!.positionMs)
+            assertEquals(2, upgraded.openHelper.readableDatabase.version)
+        } finally { upgraded?.close(); context.deleteDatabase(name) }
     }
 }

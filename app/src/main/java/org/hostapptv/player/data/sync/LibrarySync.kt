@@ -31,13 +31,23 @@ data class SyncProgress(
     val paused: Boolean = false,
 )
 
+/** A failed refresh is not made fresh by the timestamp of an older successful catalogue. */
+internal fun cataloguesNeedingRefresh(states: List<SyncStateEntity>, now: Long): List<CatalogKind> =
+    CatalogKind.entries.filter { kind ->
+        val state = states.firstOrNull { it.kind == kind.key }
+        state == null || state.status != "complete" || state.lastCompleteAt == null || now - state.lastCompleteAt > 12 * 3600_000L
+    }
+
 /**
  * Sequential foreground refresh: Live TV, then Movies, then Series. Rows are upserted in bounded
  * transactions tagged with a new generation; older rows are pruned only after a catalogue
  * completes, so an interrupted refresh never erases the working library.
  */
 class LibrarySync(private val dao: CatalogDao, private val scope: CoroutineScope) {
-    private data class Refresh(val accountId: String, val client: XtreamClient, val kinds: List<CatalogKind>)
+    private class Refresh(val accountId: String, val client: XtreamClient, val kinds: List<CatalogKind>) {
+        val completed = mutableSetOf<CatalogKind>()
+        val errors = linkedMapOf<CatalogKind, String>()
+    }
     private val requested = MutableStateFlow<Refresh?>(null)
     private val foreground = MutableStateFlow(true)
     private val _progress = MutableStateFlow(SyncProgress())
@@ -49,7 +59,7 @@ class LibrarySync(private val dao: CatalogDao, private val scope: CoroutineScope
                 if (request == null) {
                     _progress.value = _progress.value.copy(running = false, paused = requested.value != null)
                 } else {
-                    try { runSync(request.accountId, request.client, request.kinds) }
+                    try { runSync(request) }
                     finally { _progress.value = _progress.value.copy(running = false, paused = !foreground.value && requested.value != null) }
                     requested.compareAndSet(request, null)
                 }
@@ -69,10 +79,11 @@ class LibrarySync(private val dao: CatalogDao, private val scope: CoroutineScope
 
     fun cancel() { requested.value = null; _progress.value = SyncProgress() }
 
-    private suspend fun runSync(accountId: String, client: XtreamClient, kinds: List<CatalogKind>) {
+    private suspend fun runSync(request: Refresh) {
+        val accountId = request.accountId
+        val client = request.client
         _progress.value = SyncProgress(running = true)
-        var firstError: String? = null
-        for (kind in kinds) {
+        for (kind in request.kinds.filterNot { it in request.completed }) {
             val gen = System.currentTimeMillis()
             _progress.value = SyncProgress(running = true, current = kind)
             var previous: SyncStateEntity? = null
@@ -90,19 +101,22 @@ class LibrarySync(private val dao: CatalogDao, private val scope: CoroutineScope
                 }
                 dao.pruneCategories(accountId, kind.key, gen)
                 dao.upsertSyncState(SyncStateEntity(accountId, kind.key, System.currentTimeMillis(), gen, count, "complete", null))
+                request.completed += kind
+                request.errors.remove(kind)
                 AppLog.i("sync ${kind.key}: $count items")
             } catch (e: CancellationException) {
                 recordFailure(accountId, kind, gen, previous, "interrupted", null)
                 throw e
             } catch (e: Exception) {
                 AppLog.w("sync ${kind.key} failed", e)
-                val message = if (e is XtreamException) e.message else "Couldn't save the library. Check available storage and try refreshing again."
-                firstError = firstError ?: message
+                val message = (if (e is XtreamException) e.message else null)
+                    ?: "Couldn't save the library. Check available storage and try refreshing again."
+                request.errors[kind] = message
                 recordFailure(accountId, kind, gen, previous, "failed", message)
                 if (e is XtreamException.Unauthorized || e is XtreamException.CleartextRefused) break
             }
         }
-        _progress.value = SyncProgress(running = false, error = firstError)
+        _progress.value = SyncProgress(running = false, error = request.errors.values.firstOrNull())
     }
 
     private suspend fun recordFailure(a: String, kind: CatalogKind, gen: Long, previous: SyncStateEntity?, status: String, message: String?) {

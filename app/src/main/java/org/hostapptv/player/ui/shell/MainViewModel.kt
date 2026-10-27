@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.hostapptv.player.Session
 import org.hostapptv.player.container
+import org.hostapptv.player.data.sync.cataloguesNeedingRefresh
 import org.hostapptv.player.data.xtream.ProviderConfig
 import org.hostapptv.player.data.xtream.XtreamClient
 import org.hostapptv.player.data.xtream.XtreamException
@@ -64,8 +65,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun maybeSync(s: Session) {
         viewModelScope.launch(Dispatchers.IO) {
             val states = c.library.catalog.syncStatesNow(s.accountId)
-            val stale = states.size < 3 || states.any { it.lastCompleteAt == null || System.currentTimeMillis() - it.lastCompleteAt > 12 * 3600_000L }
-            if (stale) c.sync.refresh(s.accountId, s.client)
+            val kinds = cataloguesNeedingRefresh(states, System.currentTimeMillis())
+            if (kinds.isNotEmpty()) c.sync.refresh(s.accountId, s.client, kinds)
         }
     }
 

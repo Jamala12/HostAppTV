@@ -44,6 +44,7 @@ data class PlayerUiState(
     val isLive: Boolean = false,
     val seekable: Boolean = false,
     val retryAttempt: Int = 0,
+    val recoverySecondsLeft: Int = 15,
     val failure: FailureClass? = null,
     val errorDetail: String? = null,
     val audioTracks: List<TrackOption> = emptyList(),
@@ -80,6 +81,7 @@ class PlaybackController(
     private val retry = RetryPolicy()
     private var retryJob: Job? = null
     private var watchdogJob: Job? = null
+    private var recoveryJob: Job? = null
     private var tickerJob: Job? = null
     private var reachedReady = false
     private val gate = StreamGate()
@@ -130,15 +132,20 @@ class PlaybackController(
         p.stop()
         p.clearMediaItems()
         _state.value = PlayerUiState(phase = Phase.LOADING, isLive = request.kind == ContentKind.LIVE)
+        val item = MediaItem.Builder().setUri(url).setMimeType(mimeFor(request.ext)).build()
+        if (request.kind == ContentKind.LIVE || startPositionMs <= 0) p.setMediaItem(item) else p.setMediaItem(item, startPositionMs)
+        if (playWhenReady) startRecoveryDeadline(gen)
         // One provider stream at a time: wait for the previous connection to close before opening the next.
         // Rapid channel changes supersede each other here, so only the latest selection ever connects.
         openJob = scope.launch {
-            if (!gate.awaitClosed()) AppLog.w("previous stream still closing after 2s; opening anyway")
+            if (!gate.awaitClosed()) {
+                if (gen == generation) handleFailure(FailureClass.TRANSIENT, "Waiting for the previous connection to close")
+                return@launch
+            }
             if (gen != generation) return@launch
-            val item = MediaItem.Builder().setUri(url).setMimeType(mimeFor(request.ext)).build()
-            if (request.kind == ContentKind.LIVE || startPositionMs <= 0) p.setMediaItem(item) else p.setMediaItem(item, startPositionMs)
             p.playWhenReady = playWhenReady
             p.prepare()
+            if (playWhenReady) startRecoveryDeadline(gen)
             startWatchdog(gen, PREPARE_TIMEOUT_MS)
             startTicker()
             AppLog.i("open ${request.kind} ${request.contentId} gen=$gen")
@@ -174,9 +181,18 @@ class PlaybackController(
         retry.reset()
         reachedReady = false
         _state.update { it.copy(phase = Phase.LOADING, failure = null, errorDetail = null, retryAttempt = 0) }
-        if (currentKind == ContentKind.LIVE) p.seekToDefaultPosition()
-        p.prepare(); p.play()
-        startWatchdog(generation, PREPARE_TIMEOUT_MS)
+        val gen = generation
+        p.stop()
+        startRecoveryDeadline(gen)
+        retryJob = scope.launch {
+            if (!gate.awaitClosed()) {
+                if (gen == generation) handleFailure(FailureClass.TRANSIENT, "Waiting for the previous connection to close")
+                return@launch
+            }
+            if (gen != generation) return@launch
+            prepareAgain(p)
+            startWatchdog(gen, RETRY_PREPARE_TIMEOUT_MS)
+        }
         startTicker()
     }
 
@@ -238,7 +254,31 @@ class PlaybackController(
         openJob?.cancel(); openJob = null
         retryJob?.cancel(); retryJob = null
         watchdogJob?.cancel(); watchdogJob = null
+        recoveryJob?.cancel(); recoveryJob = null
         tickerJob?.cancel(); tickerJob = null
+    }
+
+    /** One deadline covers every retry and pending socket, rather than restarting for each prepare(). */
+    private fun startRecoveryDeadline(gen: Int) {
+        if (recoveryJob != null) return
+        retry.beginRecovery()
+        _state.update { it.copy(recoverySecondsLeft = ((retry.remainingMs + 999) / 1_000).toInt()) }
+        recoveryJob = scope.launch {
+            delay(retry.remainingMs)
+            if (gen == generation && retry.isRecovering) {
+                // A stream that starts just before the deadline must not be stopped while
+                // playing merely because its three-second stability check is still pending.
+                if (player?.isPlaying == true) { retry.reset(); recoveryJob = null }
+                else finishFailure(FailureClass.TRANSIENT, "The stream did not recover within 15 seconds")
+            }
+        }
+    }
+
+    private fun prepareAgain(p: ExoPlayer) {
+        // Progressive live streams have no live window. Reusing their old media source can
+        // resume an exhausted byte range; a fresh source reconnects to the current broadcast.
+        if (currentKind == ContentKind.LIVE) p.currentMediaItem?.let { p.setMediaItem(it) }
+        p.prepare(); p.play()
     }
 
     private fun startWatchdog(gen: Int, timeoutMs: Long) {
@@ -263,7 +303,7 @@ class PlaybackController(
                 val p = player ?: break
                 publishPosition()
                 if (p.isPlaying) {
-                    retry.onHealthy()
+                    if (retry.onHealthy()) { recoveryJob?.cancel(); recoveryJob = null }
                     sinceSave += 1_000
                     if (sinceSave >= 15_000) { sinceSave = 0; saveProgress() }
                 }
@@ -277,15 +317,18 @@ class PlaybackController(
             it.copy(
                 positionMs = p.currentPosition.coerceAtLeast(0), durationMs = p.duration, bufferedMs = p.bufferedPosition,
                 isLive = currentKind == ContentKind.LIVE || p.isCurrentMediaItemLive, seekable = p.isCurrentMediaItemSeekable && currentKind != ContentKind.LIVE,
+                recoverySecondsLeft = ((retry.remainingMs + 999) / 1_000).toInt(),
             )
         }
     }
 
     private fun handleFailure(failure: FailureClass, detail: String?) {
         val p = player ?: return
+        if (_state.value.phase == Phase.ERROR || _state.value.phase == Phase.SUSPENDED) return
         when (val d = retry.onFailure(failure)) {
             is RetryDecision.Retry -> {
                 val gen = generation
+                startRecoveryDeadline(gen)
                 _state.update { it.copy(phase = Phase.RETRYING, retryAttempt = d.attempt, errorDetail = detail) }
                 AppLog.i("retry ${d.attempt} in ${d.delayMs}ms ($failure)")
                 retryJob?.cancel()
@@ -295,19 +338,28 @@ class PlaybackController(
                 retryJob = scope.launch {
                     delay(d.delayMs)
                     if (gen != generation) return@launch
-                    if (failure == FailureClass.BEHIND_LIVE_WINDOW || currentKind == ContentKind.LIVE) p.seekToDefaultPosition()
-                    p.prepare(); p.play()
+                    if (!gate.awaitClosed()) {
+                        handleFailure(FailureClass.TRANSIENT, "Waiting for the previous connection to close")
+                        return@launch
+                    }
+                    if (gen != generation) return@launch
+                    if (failure == FailureClass.BEHIND_LIVE_WINDOW) p.seekToDefaultPosition()
+                    prepareAgain(p)
                     startWatchdog(gen, RETRY_PREPARE_TIMEOUT_MS)
                 }
             }
             is RetryDecision.GiveUp -> {
-                generation++
-                watchdogJob?.cancel()
-                saveProgress()
-                p.stop()
-                _state.update { it.copy(phase = Phase.ERROR, failure = d.failure, errorDetail = detail) }
+                finishFailure(d.failure, detail)
             }
         }
+    }
+
+    private fun finishFailure(failure: FailureClass, detail: String?) {
+        generation++
+        cancelJobs()
+        saveProgress()
+        _state.update { it.copy(phase = Phase.ERROR, failure = failure, errorDetail = detail) }
+        player?.stop()
     }
 
     private val listener = object : Player.Listener {
@@ -322,7 +374,10 @@ class PlaybackController(
                 }
                 Player.STATE_BUFFERING -> {
                     if (_state.value.phase != Phase.RETRYING && _state.value.phase != Phase.LOADING) _state.update { it.copy(phase = Phase.BUFFERING) }
-                    if (p.playWhenReady) startWatchdog(generation, if (reachedReady) STALL_TIMEOUT_MS else PREPARE_TIMEOUT_MS)
+                    if (p.playWhenReady) {
+                        startRecoveryDeadline(generation)
+                        startWatchdog(generation, if (reachedReady) STALL_TIMEOUT_MS else PREPARE_TIMEOUT_MS)
+                    }
                 }
                 Player.STATE_ENDED -> {
                     watchdogJob?.cancel()
@@ -336,7 +391,13 @@ class PlaybackController(
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
             val p = player ?: return
             if (p.playbackState == Player.STATE_READY) _state.update { it.copy(phase = if (playWhenReady) Phase.PLAYING else Phase.PAUSED) }
-            if (!playWhenReady) watchdogJob?.cancel()
+            if (!playWhenReady) {
+                watchdogJob?.cancel(); retryJob?.cancel(); recoveryJob?.cancel(); recoveryJob = null
+                retry.reset()
+            } else if (p.playbackState == Player.STATE_BUFFERING) {
+                startRecoveryDeadline(generation)
+                startWatchdog(generation, if (reachedReady) STALL_TIMEOUT_MS else PREPARE_TIMEOUT_MS)
+            }
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -406,9 +467,9 @@ class PlaybackController(
     init { ensurePlayer() }
 
     companion object {
-        const val PREPARE_TIMEOUT_MS = 15_000L
-        const val RETRY_PREPARE_TIMEOUT_MS = 10_000L
-        const val STALL_TIMEOUT_MS = 20_000L
+        const val PREPARE_TIMEOUT_MS = 5_000L
+        const val RETRY_PREPARE_TIMEOUT_MS = 4_000L
+        const val STALL_TIMEOUT_MS = 8_000L
 
         fun describeError(code: Int): String = when (code) {
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> "Network connection failed"
